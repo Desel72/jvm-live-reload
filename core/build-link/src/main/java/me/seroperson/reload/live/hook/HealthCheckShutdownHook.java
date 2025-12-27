@@ -1,5 +1,6 @@
 package me.seroperson.reload.live.hook;
 
+import me.seroperson.reload.live.UnrecoverableException;
 import me.seroperson.reload.live.build.BuildLogger;
 import me.seroperson.reload.live.settings.DevServerSettings;
 
@@ -41,7 +42,7 @@ public abstract class HealthCheckShutdownHook implements HealthCheckHook {
           return;
         } else if (healthResponse == 404) {
           // if health check isn't implemented, don't poll it
-          throw new UnrecoverableHookException(
+          throw new UnrecoverableException(
               "Health-check route " + path + " responded with 404. Is it implemented?");
         }
       }

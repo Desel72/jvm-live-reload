@@ -86,6 +86,7 @@ object LiveReloadPlugin extends AutoPlugin {
           HookClassnames.RestApiHealthCheckShutdown
         )
     })),
+    livePropagateEnv := SbtCompat.uncached(Map.empty),
     Compile / bgRun := Commands.liveBgRunTask.evaluated,
     Compile / run := Commands.liveDefaultRunTask.map(_ => ()).evaluated,
     Compile / run / mainClass := Some(

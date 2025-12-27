@@ -48,6 +48,9 @@ object LiveKeys {
   val liveShutdownHooks =
     taskKey[Seq[String]]("The list of shutdown hooks (classnames).")
 
+  val livePropagateEnv =
+    taskKey[Map[String, String]]("Propagates environment variables to a reloadable application.")
+
   val liveDevSettings =
     settingKey[Seq[(String, String)]]("Development server settings.")
 

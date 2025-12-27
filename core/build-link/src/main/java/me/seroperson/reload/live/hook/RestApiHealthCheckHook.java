@@ -31,8 +31,6 @@ interface RestApiHealthCheckHook extends HealthCheckHook {
         } else {
           return 0;
         }
-      } catch (java.net.ConnectException e) {
-        return -1;
       } catch (java.io.IOException e) {
         return -1;
       } catch (Exception e) {

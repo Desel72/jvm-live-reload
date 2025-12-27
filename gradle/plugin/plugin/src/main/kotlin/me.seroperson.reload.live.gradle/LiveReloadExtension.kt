@@ -10,6 +10,7 @@ abstract class LiveReloadExtension(
     abstract val settings: MapProperty<String, String>
     abstract val startupHooks: ListProperty<String>
     abstract val shutdownHooks: ListProperty<String>
+    abstract val propagateEnv: MapProperty<String, String>
 
     init {
         settings.convention(mapOf())
@@ -21,5 +22,6 @@ abstract class LiveReloadExtension(
                 "me.seroperson.reload.live.hook.RestApiHealthCheckShutdownHook",
             ),
         )
+        propagateEnv.convention(mapOf())
     }
 }

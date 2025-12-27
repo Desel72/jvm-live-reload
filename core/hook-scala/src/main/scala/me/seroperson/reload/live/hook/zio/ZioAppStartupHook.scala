@@ -2,7 +2,8 @@ package me.seroperson.reload.live.hook.zio;
 
 import me.seroperson.reload.live.build.BuildLogger
 import me.seroperson.reload.live.hook.Hook
-import me.seroperson.reload.live.hook.ReflectionUtils
+import me.seroperson.reload.live.hook.zio.ZioAppStartupHook.PermanentThreadNames
+import me.seroperson.reload.live.reflect.{MiscUtils, ShutdownHook}
 import me.seroperson.reload.live.settings.DevServerSettings
 
 class ZioAppStartupHook extends Hook {
@@ -10,7 +11,7 @@ class ZioAppStartupHook extends Hook {
   override def description: String = "Starts a zio.ZIOApp"
 
   override def isAvailable: Boolean =
-    ReflectionUtils.hasClass("zio.ZIOApp$")
+    MiscUtils.hasClass("zio.ZIOApp$")
 
   override def hook(
       th: Thread,
@@ -18,21 +19,13 @@ class ZioAppStartupHook extends Hook {
       settings: DevServerSettings,
       logger: BuildLogger
   ) = {
-    ReflectionUtils.dumpThreads(logger, th.getThreadGroup)
+    MiscUtils.dumpThreads(logger, th.getThreadGroup)
 
     // We need to update Context ClassLoader on all ZScheduler workers
     // because they usually survive reload
-    var matchedCount = ReflectionUtils.updateContextClassLoader(
+    MiscUtils.updateContextClassLoader(
       th.getThreadGroup,
-      v =>
-        (if (v == null)
-           false
-         else {
-           var threadName = v.getName
-           threadName.startsWith("ZScheduler") || threadName.startsWith(
-             "zio"
-           ) || threadName.startsWith("globalEventExecutor")
-         }),
+      v => Option(v).exists(nn => PermanentThreadNames.exists(nn.getName.startsWith)),
       cl
     )
     logger.debug(
@@ -40,4 +33,8 @@ class ZioAppStartupHook extends Hook {
     )
   }
 
+}
+
+object ZioAppStartupHook {
+  val PermanentThreadNames = Set("ZScheduler", "zio", "globalEventExecutor")
 }

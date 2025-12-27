@@ -56,7 +56,8 @@ class ReloadableProxyClient implements ProxyClient {
       ProxyCallback<ProxyConnection> callback,
       long timeout,
       TimeUnit timeUnit) {
-    ClientConnection existing = exchange.getConnection().getAttachment(clientAttachmentKey);
+    ServerConnection serverConnection = exchange.getConnection();
+    ClientConnection existing = serverConnection.getAttachment(clientAttachmentKey);
     if (existing != null) {
       logger.debug("Connection already exists");
       if (existing.isOpen()) {
@@ -67,14 +68,14 @@ class ReloadableProxyClient implements ProxyClient {
 
           existing.getCloseSetter().set(null);
           IoUtils.safeClose(existing);
-          exchange.getConnection().removeAttachment(clientAttachmentKey);
+          serverConnection.removeAttachment(clientAttachmentKey);
           exchange.removeAttachment(ReloadHandler.WAS_RELOADED);
 
           client.connect(
               new ConnectNotifier(callback, exchange),
               uri,
               currentGenerationWorker,
-              exchange.getConnection().getByteBufferPool(),
+              serverConnection.getByteBufferPool(),
               OptionMap.EMPTY);
         } else {
           // this connection already has a client, re-use it
@@ -83,7 +84,7 @@ class ReloadableProxyClient implements ProxyClient {
         }
         return;
       } else {
-        exchange.getConnection().removeAttachment(clientAttachmentKey);
+        serverConnection.removeAttachment(clientAttachmentKey);
       }
     }
     logger.debug("Creating a new proxy connection for path " + exchange.getRequestPath());
@@ -91,7 +92,7 @@ class ReloadableProxyClient implements ProxyClient {
         new ConnectNotifier(callback, exchange),
         uri,
         currentGenerationWorker,
-        exchange.getConnection().getByteBufferPool(),
+        serverConnection.getByteBufferPool(),
         OptionMap.EMPTY);
   }
 
@@ -109,24 +110,17 @@ class ReloadableProxyClient implements ProxyClient {
       final ServerConnection serverConnection = exchange.getConnection();
       serverConnection.putAttachment(clientAttachmentKey, connection);
       serverConnection.addCloseListener(
-          new ServerConnection.CloseListener() {
-            @Override
-            public void closed(ServerConnection serverConnection) {
-              IoUtils.safeClose(connection);
-              logger.debug("Closing server proxy connection for path " + exchange.getRequestPath());
-            }
-          });
+              serverConnection1 -> {
+                  IoUtils.safeClose(connection);
+                  logger.debug("Closing server proxy connection for path " + exchange.getRequestPath());
+              });
       connection
           .getCloseSetter()
           .set(
-              new ChannelListener<Channel>() {
-                @Override
-                public void handleEvent(Channel channel) {
-                  serverConnection.removeAttachment(clientAttachmentKey);
-                  logger.debug(
-                      "Closing client proxy connection for path " + exchange.getRequestPath());
-                }
-              });
+                  (ChannelListener<Channel>) channel -> {
+                      serverConnection.removeAttachment(clientAttachmentKey);
+                      logger.debug("Closing client proxy connection for path " + exchange.getRequestPath());
+                  });
       var path = uri.getPath() == null ? "/" : uri.getPath();
       callback.completed(exchange, new ProxyConnection(connection, path));
     }

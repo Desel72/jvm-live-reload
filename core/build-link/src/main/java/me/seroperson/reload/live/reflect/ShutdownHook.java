@@ -1,12 +1,10 @@
-package me.seroperson.reload.live.hook;
+package me.seroperson.reload.live.reflect;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
-import java.util.Arrays;
 import java.util.IdentityHashMap;
 import java.util.Map;
 import java.util.Set;
-import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import me.seroperson.reload.live.build.BuildLogger;
 
@@ -17,7 +15,7 @@ import me.seroperson.reload.live.build.BuildLogger;
  * hooks via reflection, which is useful for live reload scenarios where normal shutdown procedures
  * need to be controlled.
  */
-public final class ReflectionUtils {
+public final class ShutdownHook {
 
   private static final Class<?> applicationShutdownHooks;
   private static final Field hooksField;
@@ -34,21 +32,6 @@ public final class ReflectionUtils {
       runHooksMethod.setAccessible(true);
     } catch (ClassNotFoundException | NoSuchFieldException | NoSuchMethodException e) {
       throw new RuntimeException(e);
-    }
-  }
-
-  /**
-   * Checks if a class with the given name is available on the classpath.
-   *
-   * @param className the fully qualified class name to check
-   * @return true if the class is available, false otherwise
-   */
-  public static boolean hasClass(String className) {
-    try {
-      Class.forName(className);
-      return true;
-    } catch (ClassNotFoundException e) {
-      return false;
     }
   }
 
@@ -94,7 +77,7 @@ public final class ReflectionUtils {
     if (entries.isEmpty()) {
       logger.debug("(empty)");
     } else {
-      entries.stream().forEach((v) -> logger.debug("- " + v.getKey()));
+      entries.forEach((v) -> logger.debug("- " + v.getKey()));
     }
   }
 
@@ -107,17 +90,4 @@ public final class ReflectionUtils {
     }
   }
 
-  public static void dumpThreads(BuildLogger logger, ThreadGroup threadGroup) {
-    var threads = new Thread[threadGroup.activeCount()];
-    threadGroup.enumerate(threads);
-    logger.debug("Dumping " + threads.length + " threads:");
-    Arrays.stream(threads).forEach((t) -> logger.debug("- " + t));
-  }
-
-  public static void updateContextClassLoader(
-      ThreadGroup threadGroup, Predicate<Thread> predicate, ClassLoader cl) {
-    var threads = new Thread[threadGroup.activeCount()];
-    threadGroup.enumerate(threads);
-    Arrays.stream(threads).filter(predicate).forEach((t) -> t.setContextClassLoader(cl));
-  }
 }

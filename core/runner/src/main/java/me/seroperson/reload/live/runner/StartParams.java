@@ -2,6 +2,7 @@ package me.seroperson.reload.live.runner;
 
 import java.io.File;
 import java.util.List;
+import java.util.Map;
 import me.seroperson.reload.live.settings.DevServerSettings;
 
 /**
@@ -23,6 +24,7 @@ public final class StartParams {
   private final String internalMainClassName;
   private final List<String> startupHookClasses;
   private final List<String> shutdownHookClasses;
+  private final Map<String, String> propagateEnv;
 
   /**
    * Constructs a new StartParams instance with all required configuration.
@@ -43,7 +45,8 @@ public final class StartParams {
       String mainClassName,
       String internalMainClassName,
       List<String> startupHookClasses,
-      List<String> shutdownHookClasses) {
+      List<String> shutdownHookClasses,
+      Map<String, String> propagateEnv) {
     this.settings = settings;
     this.dependencyClasspath = dependencyClasspath;
     this.monitoredFiles = monitoredFiles;
@@ -51,6 +54,7 @@ public final class StartParams {
     this.internalMainClassName = internalMainClassName;
     this.startupHookClasses = startupHookClasses;
     this.shutdownHookClasses = shutdownHookClasses;
+    this.propagateEnv = propagateEnv;
   }
 
   /**
@@ -114,5 +118,9 @@ public final class StartParams {
    */
   public List<String> getShutdownHookClasses() {
     return shutdownHookClasses;
+  }
+
+  public Map<String, String> getPropagateEnv() {
+    return propagateEnv;
   }
 }

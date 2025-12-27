@@ -32,6 +32,10 @@ trait LiveReloadModule extends JavaModule {
     Seq()
   }
 
+  def livePropagateEnv: Task[Map[String, String]] = Task.Anon {
+    Map()
+  }
+
   def liveHookBundle: Task[Option[HookBundle]] = Task.Anon {
     runClasspath().collectFirst {
       case lib if lib.path.toIO.getName.startsWith("zio-http") =>
@@ -104,15 +108,16 @@ trait LiveReloadModule extends JavaModule {
     )
 
     val params = new StartParams(
-      /* settings */ settings,
+      settings,
       /* dependencyClasspath */ resolvedRunMvnDeps()
         .map(_.path.toIO)
         .asJava,
       /* monitoredFiles */ sources().map(_.path.toIO).asJava,
       /* mainClassName */ "me.seroperson.reload.live.webserver.DevServerStart",
       /* internalMainClassName */ finalMainClass(),
-      /* startupHookClasses */ liveStartupHooks().asJava,
-      /* shutdownHookClasses */ liveShutdownHooks().asJava
+      liveStartupHooks().asJava,
+      liveShutdownHooks().asJava,
+      livePropagateEnv().asJava
     )
 
     val devServerRunner = DevServerRunner.getInstance

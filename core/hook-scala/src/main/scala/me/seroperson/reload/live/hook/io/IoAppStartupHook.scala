@@ -2,7 +2,7 @@ package me.seroperson.reload.live.hook.io;
 
 import me.seroperson.reload.live.build.BuildLogger
 import me.seroperson.reload.live.hook.Hook
-import me.seroperson.reload.live.hook.ReflectionUtils
+import me.seroperson.reload.live.reflect.{MiscUtils, ShutdownHook}
 import me.seroperson.reload.live.settings.DevServerSettings
 
 /** Startup hook for Cats Effect IOApp applications.
@@ -18,7 +18,7 @@ class IoAppStartupHook extends Hook {
   override def description: String = "Starts a cats.effect.IOApp"
 
   override def isAvailable: Boolean =
-    ReflectionUtils.hasClass("cats.effect.IOApp$")
+    MiscUtils.hasClass("cats.effect.IOApp$")
 
   override def hook(
       th: Thread,
@@ -29,7 +29,7 @@ class IoAppStartupHook extends Hook {
     // Disables "IOApp `main` is running on a thread other than the main thread" warnings
     System.setProperty("cats.effect.warnOnNonMainThreadDetected", "false");
 
-    ReflectionUtils.dumpThreads(logger, th.getThreadGroup)
+    MiscUtils.dumpThreads(logger, th.getThreadGroup)
   }
 
 }

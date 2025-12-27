@@ -51,9 +51,6 @@ public final class DevServerRunner {
       Supplier<Boolean> triggerReload,
       FileWatchService fileWatchService,
       BuildLogger logger) {
-    // Set Java system properties
-    // settings.getMergedProperties().forEach(System::setProperty);
-
     /*
      * @formatter:off
      * rootClassLoader - system classes
@@ -64,7 +61,7 @@ public final class DevServerRunner {
      * @formatter:on
      */
     var buildLoader = this.getClass().getClassLoader();
-    var rootClassLoader = java.lang.ClassLoader.getSystemClassLoader().getParent();
+    var rootClassLoader = ClassLoader.getSystemClassLoader().getParent();
 
     try {
       var sharedClasses =
@@ -99,7 +96,7 @@ public final class DevServerRunner {
               String.class,
               List.class,
               List.class);
-      return (ReloadableServer)
+      var server = (ReloadableServer)
           constructor.newInstance(
               params.getSettings(),
               reloader,
@@ -107,6 +104,9 @@ public final class DevServerRunner {
               params.getInternalMainClassName(),
               params.getStartupHookClasses(),
               params.getShutdownHookClasses());
+      var wrapper = new DevServerWrapper(params, server);
+      wrapper.start();
+      return wrapper;
     } catch (Throwable e) {
       logger.error("Error during proxy server initialization", e);
       throw new RuntimeException(e);

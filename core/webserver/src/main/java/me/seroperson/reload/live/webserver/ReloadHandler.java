@@ -5,7 +5,7 @@ import io.undertow.server.HttpServerExchange;
 import io.undertow.util.AttachmentKey;
 import me.seroperson.reload.live.build.BuildLogger;
 import me.seroperson.reload.live.build.ReloadableServer;
-import me.seroperson.reload.live.hook.UnrecoverableHookException;
+import me.seroperson.reload.live.UnrecoverableException;
 
 class ReloadHandler implements HttpHandler {
 
@@ -31,9 +31,9 @@ class ReloadHandler implements HttpHandler {
 
       next.handleRequest(httpServerExchange);
       logger.debug("Request successfully handled in ReloadHandler. Was reloaded: " + wasReloaded);
-    } catch (UnrecoverableHookException e) {
+    } catch (UnrecoverableException e) {
       logger.error("Unrecoverable error during reloading", e);
-      httpServerExchange.setResponseCode(404);
+      httpServerExchange.setStatusCode(404);
       httpServerExchange.endExchange();
       server.close();
     } catch (Exception e) {

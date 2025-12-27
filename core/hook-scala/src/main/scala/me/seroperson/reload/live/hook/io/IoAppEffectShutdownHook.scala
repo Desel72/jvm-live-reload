@@ -1,11 +1,12 @@
 package cats.effect
 
 import cats.effect.unsafe.IORuntime
+
 import java.lang.management.ManagementFactory
 import javax.management.ObjectName
 import me.seroperson.reload.live.build.BuildLogger
 import me.seroperson.reload.live.hook.Hook
-import me.seroperson.reload.live.hook.ReflectionUtils
+import me.seroperson.reload.live.reflect.{MiscUtils, ShutdownHook}
 import me.seroperson.reload.live.settings.DevServerSettings
 
 /** Shutdown hook specifically designed for Cats Effect IOApp applications.
@@ -23,7 +24,7 @@ class IoAppEffectShutdownHook extends Hook {
   override def description: String = "Shutdown a cats.effect.IOApp"
 
   override def isAvailable: Boolean =
-    ReflectionUtils.hasClass("cats.effect.IOApp$")
+    MiscUtils.hasClass("cats.effect.IOApp$")
 
   override def hook(
       th: Thread,
@@ -31,7 +32,7 @@ class IoAppEffectShutdownHook extends Hook {
       settings: DevServerSettings,
       logger: BuildLogger
   ): Unit = {
-    var appThreadGroup = th.getThreadGroup()
+    val appThreadGroup = th.getThreadGroup
     th.interrupt()
     th.join()
 

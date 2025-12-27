@@ -8,12 +8,11 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.net.URI;
-import java.security.AccessControlContext;
-import java.security.AccessController;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
 import me.seroperson.reload.live.ReloadGeneration;
+import me.seroperson.reload.live.UnrecoverableException;
 import me.seroperson.reload.live.build.BuildLink;
 import me.seroperson.reload.live.build.BuildLogger;
 import me.seroperson.reload.live.build.ReloadableServer;
@@ -26,8 +25,8 @@ import org.xnio.XnioWorker;
 
 public class DevServerStart implements ReloadableServer {
 
-  private final AtomicBoolean isRunning = new AtomicBoolean(true);
-  private final Undertow server;
+  private final AtomicBoolean isRunning = new AtomicBoolean(false);
+  private Undertow server;
   private XnioWorker currentGenerationWorker;
   private ReloadableProxyClient proxyClientProvider;
   private ThreadGroup appThreadGroup;
@@ -42,8 +41,6 @@ public class DevServerStart implements ReloadableServer {
   private final DevServerSettings settings;
   private final BuildLogger logger;
   private final BuildLink buildLink;
-
-  private static final AccessControlContext accessControlContext = AccessController.getContext();
 
   public DevServerStart(
       DevServerSettings settings,
@@ -69,42 +66,47 @@ public class DevServerStart implements ReloadableServer {
             .filter(Objects::nonNull)
             .filter(Hook::isAvailable)
             .toList();
+  }
 
-    logger.info("Found " + startupHooks.size() + " startup hooks:");
-    startupHooks.stream()
-        .map((v) -> "- " + v.getClass().getSimpleName() + ": " + v.description())
-        .forEach(logger::info);
-    logger.info("Found " + shutdownHooks.size() + " shutdown hooks:");
-    shutdownHooks.stream()
-        .map((v) -> "- " + v.getClass().getSimpleName() + ": " + v.description())
-        .forEach(logger::info);
-
-    if (!settings.isDebug()) {
+  @Override
+  public void start() {
+    if (settings.isDebug()) {
+      dumpHooks();
+    } else {
       silenceJboss();
     }
 
     createCurrentGenerationWorker();
 
     this.proxyClientProvider =
-        new ReloadableProxyClient(
-            logger, URI.create("http://" + settings.getHttpHost() + ":" + settings.getHttpPort()));
+            new ReloadableProxyClient(
+                    logger, URI.create("http://" + settings.getHttpHost() + ":" + settings.getHttpPort()));
     this.proxyClientProvider.setCurrentGenerationWorker(currentGenerationWorker);
 
+    // @formatter:off
     var proxyHandler =
-        new ProxyHandler(
-            proxyClientProvider, 4000, ResponseCodeHandler.HANDLE_404, false, false, 2);
+            new ProxyHandler(
+                    proxyClientProvider,
+                    /* maxRequestTime */ -1,
+                    ResponseCodeHandler.HANDLE_404,
+                    /* rewriteHostHeader */ false,
+                    /* reuseXForwarded */ false,
+                    2);
+    // @formatter:on
 
     var handler = new ReloadHandler(logger, this, proxyHandler);
 
     server =
-        Undertow.builder()
-            .addHttpListener(settings.getProxyHttpPort(), settings.getProxyHttpHost())
-            .setHandler(handler)
-            .setServerOption(UndertowOptions.SHUTDOWN_TIMEOUT, 1000)
-            .build();
+            Undertow.builder()
+                    .addHttpListener(settings.getProxyHttpPort(), settings.getProxyHttpHost())
+                    .setHandler(handler)
+                    .setServerOption(UndertowOptions.SHUTDOWN_TIMEOUT, 1000)
+                    .build();
     server.start();
 
     appThreadGroup = new ThreadGroup("app");
+
+    isRunning.set(true);
   }
 
   private Hook initHook(String className) {
@@ -121,6 +123,10 @@ public class DevServerStart implements ReloadableServer {
   }
 
   private synchronized void startInternal(ReloadGeneration generation) {
+    if(!isRunning.get()) {
+      throw new UnrecoverableException("Unable to start underlying application without a running proxy.");
+    }
+
     createCurrentGenerationWorker();
     proxyClientProvider.setCurrentGenerationWorker(currentGenerationWorker);
 
@@ -146,9 +152,8 @@ public class DevServerStart implements ReloadableServer {
                 stopInternal();
                 throw new RuntimeException(e);
               } catch (InvocationTargetException e) {
-                if (e.getCause() instanceof InterruptedException) {
-                  // Don't log InterruptedException, as likely they're intended
-                } else {
+                // Don't log InterruptedException, as likely they're intended
+                if (!(e.getCause() instanceof InterruptedException)) {
                   logger.error("Error in application main thread", e);
                 }
               }
@@ -253,6 +258,17 @@ public class DevServerStart implements ReloadableServer {
     } catch (Exception e) {
       logger.error("Error during initializing proxy connection worker", e);
     }
+  }
+
+  private void dumpHooks() {
+    logger.debug("Found " + startupHooks.size() + " startup hooks:");
+    startupHooks.stream()
+            .map((v) -> "- " + v.getClass().getSimpleName() + ": " + v.description())
+            .forEach(logger::debug);
+    logger.debug("Found " + shutdownHooks.size() + " shutdown hooks:");
+    shutdownHooks.stream()
+            .map((v) -> "- " + v.getClass().getSimpleName() + ": " + v.description())
+            .forEach(logger::debug);
   }
 
   // Shameful copy-n-paste from cask.main.Main.silenceJboss

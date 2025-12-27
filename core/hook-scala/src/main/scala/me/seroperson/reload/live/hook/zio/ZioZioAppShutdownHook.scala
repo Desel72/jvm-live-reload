@@ -2,8 +2,7 @@ package zio;
 
 import me.seroperson.reload.live.build.BuildLogger
 import me.seroperson.reload.live.hook.Hook
-import me.seroperson.reload.live.hook.ReflectionUtils
-import me.seroperson.reload.live.hook.RuntimeShutdownHook
+import me.seroperson.reload.live.reflect.MiscUtils
 import me.seroperson.reload.live.settings.DevServerSettings
 
 class ZioZioAppShutdownHook extends Hook {
@@ -11,7 +10,7 @@ class ZioZioAppShutdownHook extends Hook {
   override def description: String = "Shutdown a zio.ZIOApp"
 
   override def isAvailable: Boolean =
-    ReflectionUtils.hasClass("zio.ZIOApp$")
+    MiscUtils.hasClass("zio.ZIOApp$")
 
   override def hook(
       th: Thread,
@@ -34,20 +33,6 @@ class ZioZioAppShutdownHook extends Hook {
         case _                     => ()
       }
     }
-
-    /*logger.debug("Interrupting all alive fibers")
-    implicit val unsafe = Unsafe.unsafe
-    Runtime.default.unsafe.run {
-      for {
-        mainFiberId <- ZIO.fiberId
-        roots <- Fiber.roots
-        _ <- Fiber.interruptAll(
-          roots.view.filter(fiber =>
-            fiber.isAlive() && (fiber.id != mainFiberId)
-          )
-        )
-      } yield ()
-    }*/
   }
 
 }

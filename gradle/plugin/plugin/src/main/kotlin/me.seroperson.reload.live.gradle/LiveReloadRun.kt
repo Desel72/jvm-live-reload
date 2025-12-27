@@ -38,6 +38,8 @@ abstract class LiveReloadRun
 
         @get:Input abstract val shutdownHooks: ListProperty<String>
 
+        @get:Input abstract val propagateEnv: MapProperty<String, String>
+
         @get:Internal
         val isUpToDate: Boolean
             get() {
@@ -59,6 +61,7 @@ abstract class LiveReloadRun
                         this.mainClass.get(),
                         this.startupHooks.get(),
                         this.shutdownHooks.get(),
+                        this.propagateEnv.get(),
                     )
                 deploymentRegistry.start(id, ChangeBehavior.BLOCK, LiveReloadRunHandle::class.java, params)
             } else {

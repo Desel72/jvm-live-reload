@@ -108,7 +108,8 @@ private[sbt] object Commands {
         /* mainClassName */ (Compile / run / mainClass).value.get,
         /* internalMainClassName */ (Compile / mainClass).value.get,
         liveStartupHooks.value.asJava,
-        liveShutdownHooks.value.asJava
+        liveShutdownHooks.value.asJava,
+        livePropagateEnv.value.asJava
       )
 
       val devServerRunner = DevServerRunner.getInstance

@@ -5,6 +5,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import me.seroperson.reload.live.build.BuildLogger;
+import me.seroperson.reload.live.reflect.ShutdownHook;
 import me.seroperson.reload.live.settings.DevServerSettings;
 
 /**
@@ -21,7 +22,7 @@ public class RuntimeShutdownHook implements Hook {
   private final Set<Long> buildSystemHookThreadIds;
 
   public RuntimeShutdownHook() {
-    buildSystemShutdownHooks = new IdentityHashMap<>(ReflectionUtils.getRegistredShutdownHooks());
+    buildSystemShutdownHooks = new IdentityHashMap<>(ShutdownHook.getRegistredShutdownHooks());
     buildSystemHookThreadIds =
         buildSystemShutdownHooks.keySet().stream().map(Thread::getId).collect(Collectors.toSet());
   }
@@ -39,12 +40,12 @@ public class RuntimeShutdownHook implements Hook {
   @Override
   public void hook(Thread th, ClassLoader cl, DevServerSettings settings, BuildLogger logger) {
     logger.debug("Skipping shutdown hooks:");
-    ReflectionUtils.logShutdownHooks(buildSystemShutdownHooks, logger);
+    ShutdownHook.logShutdownHooks(buildSystemShutdownHooks, logger);
     // Unregistering build-system shutdown hooks
-    ReflectionUtils.unregisterShutdownHooks(buildSystemHookThreadIds);
-    ReflectionUtils.runApplicationShutdownHooks(logger);
+    ShutdownHook.unregisterShutdownHooks(buildSystemHookThreadIds);
+    ShutdownHook.runApplicationShutdownHooks(logger);
     // Reset the hooks field to the initial state to prevent
     // the application from thinking it's permanently in shutdown state
-    ReflectionUtils.setShutdownHooks(new IdentityHashMap<>(buildSystemShutdownHooks));
+    ShutdownHook.setShutdownHooks(new IdentityHashMap<>(buildSystemShutdownHooks));
   }
 }

@@ -69,6 +69,38 @@ class IntegrationTests extends AnyFunSuite {
     assert(greet && greetReloaded)
   }
 
+  test("zio-http-propagate-env") {
+    val resourceDir = os.Path(BuildInfo.resourceDir) / "zio-http-propagate-env"
+
+    val tester = new IntegrationTester(
+      daemonMode = false,
+      workspaceSourcePath = resourceDir,
+      millExecutable = os.Path(BuildInfo.exePath),
+      // debugLog = true
+    )
+
+    val runThread = new Thread(new Runnable() {
+      override def run(): Unit = {
+        tester.eval(
+          "app.liveReloadRun",
+          env = Map("PLUGIN_VERSION" -> BuildInfo.version),
+          stdout = ProcessOutput.Readlines(v => println(v)),
+          mergeErrIntoOut = true,
+          timeoutGracePeriod = 10000
+        )
+      }
+    })
+    runThread.start()
+
+    val greet = runUntil("http://localhost:9000/greet", 200, "Hello World")
+    tester.modifyFile(tester.workspacePath / "app" / "src" / "App.scala", _ => os.read(resourceDir / "changes" / "app" / "src" / "App.scala.1"))
+    val greetReloaded = runUntil("http://localhost:9000/greet_reloaded", 200, "World Hello")
+
+    tester.close()
+
+    assert(greet && greetReloaded)
+  }
+
   test("zio-http-multiproject") {
     val resourceDir = os.Path(BuildInfo.resourceDir) / "zio-http-multiproject"
 
