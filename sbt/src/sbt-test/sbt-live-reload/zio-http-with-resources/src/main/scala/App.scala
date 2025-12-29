@@ -3,6 +3,7 @@ import zio._
 import zio.config.magnolia._
 import zio.config.typesafe._
 import zio.http._
+import zio.http.netty.NettyConfig
 
 case class TestRootConfig(a: Int)
 
@@ -27,7 +28,9 @@ object GreetingServer extends ZIOAppDefault {
   def run = Server
     .serve(routes)
     .provide(
-      Server.defaultWithPort(me.seroperson.BuildInfo.port),
+      Server.customized,
+      ZLayer.succeed(Server.Config.default.port(me.seroperson.BuildInfo.port)),
+      ZLayer.succeed(NettyConfig.defaultWithFastShutdown),
       ZLayer.fromZIO {
         TypesafeConfigProvider
           .fromResourcePath()

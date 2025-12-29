@@ -1,5 +1,6 @@
 import zio._
 import zio.http._
+import zio.http.netty.NettyConfig
 
 object GreetingServer extends ZIOAppDefault {
   val routes =
@@ -11,7 +12,10 @@ object GreetingServer extends ZIOAppDefault {
         Response.ok
       }
     )
-  def run = Server
-    .serve(routes)
-    .provide(Server.defaultWithPort(me.seroperson.BuildInfo.port))
+  def run = Server.serve(routes)
+    .provide(
+      Server.customized,
+      ZLayer.succeed(Server.Config.default.port(me.seroperson.BuildInfo.port)),
+      ZLayer.succeed(NettyConfig.defaultWithFastShutdown)
+    )
 }

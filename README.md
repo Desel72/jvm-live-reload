@@ -29,8 +29,10 @@ project.
   - [Gradle](#gradle)
   - [mill](#mill)
   - [Fixing the InaccessibleObjectException error](#fixing-the-inaccessibleobjectexception-error)
+  - [Tuning your webserver](#tuning-your-webserver)
 - [Configuration](#configuration)
   - [Hooks](#hooks)
+  - [Propagate environment](#propagate-environment)
 - [List of tested frameworks](#list-of-tested-frameworks)
 - [License](#license)
 
@@ -178,7 +180,36 @@ Then you need either tweak environment variable or add this option to [your
 IDE's Java runtime][14]:
 
 ```sh
-export JDK_JAVA_OPTIONS="$JDK_JAVA_OPTIONS --add-opens=java.base/java.lang=ALL-UNNAMED"
+export JDK_JAVA_OPTIONS="$JDK_JAVA_OPTIONS --add-opens=java.base/java.util=ALL-UNNAMED --add-opens=java.base/java.lang=ALL-UNNAMED"
+```
+
+### Tuning your webserver
+
+Some webservers may have settings which can slow down your reloading speed. For
+example, Netty has a `quietPeriodSeconds` parameter, which sets the period of
+time before shutdown when the webserver would be idle. `zio-http` has this
+parameter set by default to 2 seconds; other frameworks with Netty under the
+hood may have other slow defaults. So be sure to tweak it if you notice some
+lags during reloading.
+
+For example, in case of `zio-http` you can use the predefined "fast shutdown"
+Netty config:
+
+```scala
+import zio._
+import zio.http._
+import zio.http.netty.NettyConfig
+
+object App extends ZIOAppDefault {
+  val routes = Routes(/* ... */)
+
+  def run = Server.serve(routes)
+    .provide(
+      Server.customized,
+      ZLayer.succeed(Server.Config.default),
+      ZLayer.succeed(NettyConfig.defaultWithFastShutdown)
+    )
+}
 ```
 
 ## Configuration
@@ -336,6 +367,28 @@ object app extends LiveReloadModule, ScalaModule {
 }
 ```
 
+### Propagate environment
+
+This plugin provides a feature to propagate custom environment variables to a
+reloadable application. While with `sbt` you can make use of [sbt-dotenv][16],
+which is [compatible][17] with the plugin, propagating the environment with
+`mill` and `gradle` can be tricky, as an application starts within the same
+existing JVM process while reloading. So for such purposes there is the
+`livePropagateEnv` setting (`propagateEnv` for `gradle`), which accepts
+`Map<String, String>` (your custom environment) to pass to an application.
+
+For example, for `mill` it would look like:
+
+```scala
+import me.seroperson.reload.live.mill.*
+
+object app extends LiveReloadModule, ScalaModule {
+  def forkEnv = Map("BASE_URL" -> "...")
+  // Can reuse `forkEnv` or hardcode environment in place
+  def livePropagateEnv = Task.Anon { forkEnv() }
+}
+```
+
 ## List of tested frameworks
 
 To minimize any unsuccessful experience, we'll maintain the list of officially
@@ -441,4 +494,5 @@ SOFTWARE.
 [14]: https://www.jetbrains.com/help/idea/tuning-the-ide.html#procedure-jvm-options
 [15]: https://seroperson.me/2025/11/28/jvm-live-reload/
 [16]: https://github.com/Philippus/sbt-dotenv
+[17]: https://github.com/seroperson/jvm-live-reload/tree/main/sbt/src/sbt-test/sbt-live-reload/http4s-dotenv
 <!-- prettier-ignore-end -->
