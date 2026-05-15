@@ -3,6 +3,7 @@ package me.seroperson.reload.live.webserver;
 import io.undertow.server.HttpHandler;
 import io.undertow.server.HttpServerExchange;
 import io.undertow.util.AttachmentKey;
+import io.undertow.util.StatusCodes;
 import me.seroperson.reload.live.UnrecoverableException;
 import me.seroperson.reload.live.build.BuildLogger;
 import me.seroperson.reload.live.build.ReloadableServer;
@@ -38,6 +39,10 @@ class ReloadHandler implements HttpHandler {
       server.close();
     } catch (Exception e) {
       logger.error("Error during reloading", e);
+      if (!httpServerExchange.isResponseStarted()) {
+        httpServerExchange.setStatusCode(StatusCodes.INTERNAL_SERVER_ERROR);
+      }
+      httpServerExchange.endExchange();
     }
   }
 }
