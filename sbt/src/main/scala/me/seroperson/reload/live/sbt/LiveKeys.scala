@@ -8,6 +8,10 @@ import sbt.internal.inc.Analysis
 import sbt.settingKey
 import sbt.taskKey
 
+sealed trait ServerType
+case object HttpServerType extends ServerType
+case object GrpcServerType extends ServerType
+
 object LiveKeys {
 
   val LiveReloadPlugin = me.seroperson.reload.live.sbt.LiveReloadPlugin
@@ -17,11 +21,13 @@ object LiveKeys {
     val IoAppStartup = "me.seroperson.reload.live.hook.io.IoAppStartupHook"
     val ZioAppStartup = "me.seroperson.reload.live.hook.zio.ZioAppStartupHook"
     val RestApiHealthCheckStartup = "me.seroperson.reload.live.hook.RestApiHealthCheckStartupHook"
+    val GrpcHealthCheckStartup = "me.seroperson.reload.live.hook.GrpcHealthCheckStartupHook"
 
     val IoAppShutdown = "me.seroperson.reload.live.hook.io.IoAppShutdownHook"
     val ZioAppShutdown = "me.seroperson.reload.live.hook.zio.ZioAppShutdownHook"
     val RuntimeShutdown = "me.seroperson.reload.live.hook.RuntimeShutdownHook"
     val RestApiHealthCheckShutdown = "me.seroperson.reload.live.hook.RestApiHealthCheckShutdownHook"
+    val GrpcHealthCheckShutdown = "me.seroperson.reload.live.hook.GrpcHealthCheckShutdownHook"
     val ThreadInterruptShutdown = "me.seroperson.reload.live.hook.ThreadInterruptShutdownHook"
     // format: on
   }
@@ -33,6 +39,11 @@ object LiveKeys {
     val LiveReloadHttpHost: String = DevServerSettings.LiveReloadHttpHost
     val LiveReloadHttpPort: String = DevServerSettings.LiveReloadHttpPort
     val LiveReloadHealthPath: String = DevServerSettings.LiveReloadHealthPath
+    val LiveReloadProxyGrpcHost: String = DevServerSettings.LiveReloadProxyGrpcHost
+    val LiveReloadProxyGrpcPort: String = DevServerSettings.LiveReloadProxyGrpcPort
+    val LiveReloadGrpcHost: String = DevServerSettings.LiveReloadGrpcHost
+    val LiveReloadGrpcPort: String = DevServerSettings.LiveReloadGrpcPort
+    val LiveReloadGrpcHealthService: String = DevServerSettings.LiveReloadGrpcHealthService
     val LiveReloadIsDebug: String = DevServerSettings.LiveReloadIsDebug
     // format: on
   }
@@ -52,11 +63,14 @@ object LiveKeys {
     taskKey[Map[String, String]](
       "Propagates environment variables to a reloadable application."
     )
+  
+  val liveServerType =
+    settingKey[ServerType]("Server type: HTTP or GRPC.")
 
   val liveDevSettings =
     settingKey[Seq[(String, String)]]("Development server settings.")
 
-  val liveMonitoredFiles =
+  @transient val liveMonitoredFiles =
     taskKey[Seq[File]]("The list of files to be monitored for changes.")
 
   val liveDependencyClasspath = taskKey[Classpath](

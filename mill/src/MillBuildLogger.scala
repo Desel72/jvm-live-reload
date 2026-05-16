@@ -11,8 +11,9 @@ private[mill] class MillBuildLogger(
 
   override def debug(message: String) = {
     if (settings.isDebug) {
-      logger.debug(message)
+      // logger.debug(message)
     }
+    logger.info(message)
   }
 
   override def info(message: String) = {

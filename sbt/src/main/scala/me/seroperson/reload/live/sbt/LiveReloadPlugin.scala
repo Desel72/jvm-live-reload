@@ -33,10 +33,17 @@ object LiveReloadPlugin extends AutoPlugin {
   override lazy val globalSettings = Seq()
 
   override lazy val projectSettings = Seq(
-    libraryDependencies ++= Seq(
-      "me.seroperson" % "jvm-live-reload-webserver" % BuildInfo.version,
-      "me.seroperson" %% "jvm-live-reload-hook-scala" % BuildInfo.version
-    ),
+    liveServerType := HttpServerType,
+    libraryDependencies ++= {
+      val webserverDep = liveServerType.value match {
+        case HttpServerType => "me.seroperson" % "jvm-live-reload-webserver" % BuildInfo.version
+        case GrpcServerType => "me.seroperson" % "jvm-live-reload-webserver-grpc" % BuildInfo.version
+      }
+      Seq(
+        webserverDep,
+        "me.seroperson" %% "jvm-live-reload-hook-scala" % BuildInfo.version
+      )
+    },
     liveFileWatchService := FileWatchService.detect(
       pollInterval.value.toMillis.toInt,
       null.asInstanceOf[LoggerProxy]
@@ -49,12 +56,7 @@ object LiveReloadPlugin extends AutoPlugin {
     ),
     // all user classes in this project and any other subprojects that it depends on
     liveReloaderClasspath := SbtCompat.uncached(
-      Classpaths
-        .concatDistinct(
-          Runtime / exportedProducts,
-          Runtime / internalDependencyClasspath
-        )
-        .value
+      SbtCompat.reloaderClasspathTask.value
     ),
     liveReload := SbtCompat.uncached(Commands.liveReloadTask.value),
     liveCompileEverything := SbtCompat.uncached(
@@ -74,23 +76,33 @@ object LiveReloadPlugin extends AutoPlugin {
     liveStartupHooks := SbtCompat.uncached((liveHookBundle.value match {
       case Some(hookBundle) => hookBundle.startupHooks
       case None             =>
-        Seq(
-          HookClassnames.RestApiHealthCheckStartup
-        )
+        liveServerType.value match {
+          case HttpServerType => Seq(HookClassnames.RestApiHealthCheckStartup)
+          case GrpcServerType => Seq(HookClassnames.GrpcHealthCheckStartup)
+        }
     })),
     liveShutdownHooks := SbtCompat.uncached((liveHookBundle.value match {
       case Some(hookBundle) => hookBundle.shutdownHooks
       case None             =>
-        Seq(
-          HookClassnames.ThreadInterruptShutdown,
-          HookClassnames.RestApiHealthCheckShutdown
-        )
+        liveServerType.value match {
+          case HttpServerType =>
+            Seq(
+              HookClassnames.ThreadInterruptShutdown,
+              HookClassnames.RestApiHealthCheckShutdown
+            )
+          case GrpcServerType =>
+            Seq(
+              HookClassnames.ThreadInterruptShutdown,
+              HookClassnames.GrpcHealthCheckShutdown
+            )
+        }
     })),
     livePropagateEnv := SbtCompat.uncached(Map.empty),
     Compile / bgRun := Commands.liveBgRunTask.evaluated,
     Compile / run := Commands.liveDefaultRunTask.map(_ => ()).evaluated,
-    Compile / run / mainClass := Some(
-      "me.seroperson.reload.live.webserver.DevServerStart"
-    )
+    Compile / run / mainClass := SbtCompat.uncached(Some(liveServerType.value match {
+      case HttpServerType => "me.seroperson.reload.live.webserver.DevServerStart"
+      case GrpcServerType => "me.seroperson.reload.live.webserver.grpc.GrpcDevServerStart"
+    }))
   )
 }

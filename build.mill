@@ -1,4 +1,4 @@
-//| mill-version: 1.1.0-RC2
+//| mill-version: 1.1.6
 //| mill-jvm-version: system
 //| mvnDeps: ["com.lihaoyi::mill-contrib-buildinfo:$MILL_VERSION"]
 
@@ -13,9 +13,9 @@ import mill.util.BuildInfo.millBinPlatform
 import mill.util.BuildInfo.millVersion
 // @formatter:on
 
-val scala212 = "2.12.20"
-val scala213 = "2.13.16"
-val scala3 = "3.7.2"
+val scala212 = "2.12.21"
+val scala213 = "2.13.18"
+val scala3 = "3.8.2"
 val supportedScalaVersions = Seq(scala212, scala213, scala3)
 
 trait CorePublishModule extends SonatypeCentralPublishModule {
@@ -77,6 +77,23 @@ object webserver extends JavaModule with CorePublishModule {
   )
 }
 
+object `webserver-grpc` extends JavaModule with CorePublishModule {
+
+  override def artifactName = "jvm-live-reload-webserver-grpc"
+
+  override def moduleDeps = Seq(`build-link`)
+
+  override def sources = Task.Sources(
+    BuildCtx.workspaceRoot / "core" / "webserver-grpc" / "src" / "main" / "java"
+  )
+
+  override def mvnDeps = Seq(
+    mvn"io.grpc:grpc-netty-shaded:1.72.0",
+    mvn"io.grpc:grpc-stub:1.72.0",
+    mvn"io.grpc:grpc-services:1.72.0"
+  )
+}
+
 object `hook-scala` extends Cross[HookScalaModule](supportedScalaVersions)
 
 trait HookScalaModule
@@ -102,7 +119,7 @@ trait HookScalaModule
 
 object `mill-live-reload` extends ScalaModule, CorePublishModule, BuildInfo {
 
-  override def scalaVersion = "3.7.3"
+  override def scalaVersion = scala3
 
   override def platformSuffix = s"_mill$millBinPlatform"
 
@@ -121,7 +138,10 @@ object `mill-live-reload` extends ScalaModule, CorePublishModule, BuildInfo {
 
     override def mvnDeps = Seq(
       mvn"com.lihaoyi::mill-testkit:$millVersion",
-      mvn"com.squareup.okhttp3:okhttp-jvm:5.2.1"
+      mvn"com.squareup.okhttp3:okhttp-jvm:5.2.1",
+      mvn"io.grpc:grpc-netty-shaded:1.72.0",
+      mvn"io.grpc:grpc-stub:1.72.0",
+      mvn"io.grpc:grpc-protobuf:1.72.0",
     )
 
     override def resources: T[Seq[PathRef]] = Task {

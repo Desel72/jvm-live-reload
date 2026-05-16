@@ -1,6 +1,6 @@
 lazy val scala212 = "2.12.21"
 lazy val scala213 = "2.13.18"
-lazy val scala3 = "3.7.4"
+lazy val scala3 = "3.8.2"
 lazy val supportedScalaVersions = List(scala212, scala213, scala3)
 lazy val supportedScalaSbtVersions = List(scala212, scala3)
 
@@ -82,12 +82,41 @@ lazy val `sbtLiveReload` = (projectMatrix in file("sbt"))
     (pluginCrossBuild / sbtVersion) := {
       scalaBinaryVersion.value match {
         case "2.12" => "1.12.0"
-        case _      => "2.0.0-RC8"
+        case _      => "2.0.0-RC10"
       }
     },
     buildInfoKeys := Seq[BuildInfoKey](version),
     buildInfoPackage := "me.seroperson.reload.live.sbt",
-    scriptedLaunchOpts += version.apply { v => s"-Dproject.version=$v" }.value
+    scriptedLaunchOpts += version.apply { v => s"-Dproject.version=$v" }.value,
+    libraryDependencies ++= {
+      scalaBinaryVersion.value match {
+        case "3" => Seq(
+          "me.seroperson" %% "sbt-testkit" % "0.1.0" % Test,
+          "org.scala-sbt" %% "protocol" % "2.0.0-RC12" % Test,
+          "org.scalatest" %% "scalatest" % "3.2.19" % Test,
+          "io.grpc" % "grpc-netty-shaded" % "1.72.0" % Test,
+          "io.grpc" % "grpc-stub" % "1.72.0" % Test,
+          "io.grpc" % "grpc-protobuf" % "1.72.0" % Test,
+        )
+        case _ => Seq.empty
+      }
+    },
+    resolvers += Resolver.mavenLocal,
+    dependencyOverrides ++= {
+      scalaBinaryVersion.value match {
+        case "3" => Seq("org.scala-sbt" %% "protocol" % "2.0.0-RC12")
+        case _   => Seq.empty
+      }
+    },
+    Test / fork := true,
+    Test / testForkedParallel := false,
+    // Only compile/run tests for Scala 3 (sbt-testkit is Scala 3 only)
+    Test / unmanagedSourceDirectories := {
+      scalaBinaryVersion.value match {
+        case "3" => Seq((Test / scalaSource).value)
+        case _   => Seq.empty
+      }
+    }
   )
   .jvmPlatform(scalaVersions = supportedScalaSbtVersions)
   .dependsOn(`buildLink`, `runner`)
@@ -98,6 +127,19 @@ lazy val `webserver` = (project in file("core/webserver"))
     name := "jvm-live-reload-webserver",
     description := "Development-mode proxy webserver for Live Reload experience on JVM",
     libraryDependencies := Seq(Dependencies.undertow)
+  )
+  .dependsOn(`buildLink`)
+
+lazy val `webserver-grpc` = (project in file("core/webserver-grpc"))
+  .settings(javaProjectSettings)
+  .settings(
+    name := "jvm-live-reload-webserver-grpc",
+    description := "Development-mode GRPC proxy for Live Reload experience on JVM",
+    libraryDependencies := Seq(
+      Dependencies.grpcNettyShaded,
+      Dependencies.grpcStub,
+      Dependencies.grpcServices
+    )
   )
   .dependsOn(`buildLink`)
 

@@ -1,0 +1,13 @@
+# Start dev mode
+> bgRun
+
+# Test initial GRPC response
+# request: Hello World!
+# response: World Hello!
+> verifyGrpcCall "Greeter" "SayHello" "0a0c48656c6c6f20576f726c6421" "0a0c576f726c642048656c6c6f21"
+
+# Test reload with modified response
+$ copy-file changes/App.scala.1 src/main/scala/App.scala
+# request: Hello World!
+# response: Hello World Reloaded!
+> verifyGrpcCall "Greeter" "SayHello" "0a0c48656c6c6f20576f726c6421" "0a1548656c6c6f20576f726c642052656c6f6164656421"

@@ -140,6 +140,9 @@ private[sbt] object Commands {
         val devServer = liveRunTask(isBackground = true).evaluated
         try {
           Thread.sleep(Long.MaxValue)
+        } catch {
+          case _: InterruptedException =>
+            ()
         } finally {
           devServer.close()
         }

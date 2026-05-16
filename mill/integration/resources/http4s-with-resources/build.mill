@@ -6,7 +6,7 @@ import mill.scalalib.*
 
 object app extends LiveReloadModule, ScalaModule {
 
-  override def scalaVersion = "3.7.3"
+  override def scalaVersion = "3.8.2"
   override def mvnDeps = super.mvnDeps() ++ Seq(
     mvn"org.http4s::http4s-ember-server:0.23.30",
     mvn"org.http4s::http4s-dsl:0.23.30",

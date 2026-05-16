@@ -22,11 +22,21 @@ import scala.jdk.CollectionConverters.*
 
 trait LiveReloadModule extends JavaModule {
 
+  def liveServerType: Task[ServerType] = Task.Anon {
+    HttpServerType
+  }
+
   override def mvnDeps =
-    super.mvnDeps() ++ Seq(
-      mvn"me.seroperson:jvm-live-reload-webserver:${BuildInfo.version}",
-      mvn"me.seroperson::jvm-live-reload-hook-scala:${BuildInfo.version}"
-    )
+    super.mvnDeps() ++ {
+      val webserverDep = liveServerType() match {
+        case HttpServerType => mvn"me.seroperson:jvm-live-reload-webserver:${BuildInfo.version}"
+        case GrpcServerType => mvn"me.seroperson:jvm-live-reload-webserver-grpc:${BuildInfo.version}"
+      }
+      Seq(
+        webserverDep,
+        mvn"me.seroperson::jvm-live-reload-hook-scala:${BuildInfo.version}"
+      )
+    }
 
   def liveDevSettings: Task[Seq[(String, String)]] = Task.Anon {
     Seq()
@@ -38,33 +48,66 @@ trait LiveReloadModule extends JavaModule {
 
   def liveHookBundle: Task[Option[HookBundle]] = Task.Anon {
     runClasspath().collectFirst {
-      case lib if lib.path.toIO.getName.startsWith("zio-http") =>
+      case lib if lib.path.toIO.getName.startsWith("zio-http") || lib.path.toIO.getName.startsWith("zio") =>
         ZioAppHookBundle
-      case lib if lib.path.toIO.getName.startsWith("http4s") =>
-        IoAppHookBundle
       case lib if lib.path.toIO.getName.startsWith("cask") =>
         CaskAppHookBundle
+      case lib if lib.path.toIO.getName.startsWith("http4s") || lib.path.toIO.getName.startsWith("cats-effect") =>
+        IoAppHookBundle
     }
   }
 
   def liveStartupHooks: Task[Seq[String]] = Task.Anon {
+    val isGrpc = liveServerType() == GrpcServerType
     liveHookBundle() match {
-      case Some(hookBundle) => hookBundle.startupHooks
+      case Some(hookBundle) => 
+        if (isGrpc) {
+          hookBundle.startupHooks.map { hook =>
+            if (hook == HookClassnames.RestApiHealthCheckStartup) {
+              HookClassnames.GrpcHealthCheckStartup
+            } else {
+              hook
+            }
+          }
+        } else {
+          hookBundle.startupHooks
+        }
       case None             =>
-        Seq(
-          HookClassnames.RestApiHealthCheckStartup
-        )
+        if (isGrpc) {
+          Seq(HookClassnames.GrpcHealthCheckStartup)
+        } else {
+          Seq(HookClassnames.RestApiHealthCheckStartup)
+        }
     }
   }
 
   def liveShutdownHooks: Task[Seq[String]] = Task.Anon {
+    val isGrpc = liveServerType() == GrpcServerType
     liveHookBundle() match {
-      case Some(hookBundle) => hookBundle.shutdownHooks
+      case Some(hookBundle) => 
+        if (isGrpc) {
+          hookBundle.shutdownHooks.map { hook =>
+            if (hook == HookClassnames.RestApiHealthCheckShutdown) {
+              HookClassnames.GrpcHealthCheckShutdown
+            } else {
+              hook
+            }
+          }
+        } else {
+          hookBundle.shutdownHooks
+        }
       case None             =>
-        Seq(
-          HookClassnames.ThreadInterruptShutdown,
-          HookClassnames.RestApiHealthCheckShutdown
-        )
+        if (isGrpc) {
+          Seq(
+            HookClassnames.ThreadInterruptShutdown,
+            HookClassnames.GrpcHealthCheckShutdown
+          )
+        } else {
+          Seq(
+            HookClassnames.ThreadInterruptShutdown,
+            HookClassnames.RestApiHealthCheckShutdown
+          )
+        }
     }
   }
 
@@ -79,8 +122,8 @@ trait LiveReloadModule extends JavaModule {
     )
 
     val reloadCompile: Supplier[CompileResult] = () => {
-      eval.execute(Seq(compile, runClasspath)) match {
-        case Evaluator.Result(_, Result.Failure(err), _, _) =>
+      eval.execute(Seq(runClasspath)) match {
+        case Evaluator.Result(_, Result.Failure(err, _, _, _, _, _), _, _) =>
           new CompileFailure(new Throwable(err))
 
         case Evaluator.Result(
@@ -110,13 +153,18 @@ trait LiveReloadModule extends JavaModule {
       null.asInstanceOf[LoggerProxy]
     )
 
+    val mainClassName = liveServerType() match {
+      case HttpServerType => "me.seroperson.reload.live.webserver.DevServerStart"
+      case GrpcServerType => "me.seroperson.reload.live.webserver.grpc.GrpcDevServerStart"
+    }
+
     val params = new StartParams(
       settings,
       /* dependencyClasspath */ resolvedRunMvnDeps()
         .map(_.path.toIO)
         .asJava,
       /* monitoredFiles */ sources().map(_.path.toIO).asJava,
-      /* mainClassName */ "me.seroperson.reload.live.webserver.DevServerStart",
+      /* mainClassName */ mainClassName,
       /* internalMainClassName */ finalMainClass(),
       liveStartupHooks().asJava,
       liveShutdownHooks().asJava,

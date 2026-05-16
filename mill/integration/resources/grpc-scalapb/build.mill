@@ -1,0 +1,23 @@
+package build
+
+import me.seroperson.reload.live.mill.*
+import mill.*
+import mill.scalalib.*
+import contrib.scalapblib.*
+
+object app extends LiveReloadModule, ScalaModule, ScalaPBModule {
+
+  override def scalaVersion = "2.13.16"
+  override def scalaPBVersion = "1.0.0-alpha.3"
+  override def liveServerType = Task.Anon {
+    GrpcServerType
+  }
+  override def liveDevSettings = Task.Anon {
+    Seq(
+      DevSettingsKeys.LiveReloadProxyGrpcPort -> "9000",
+      DevSettingsKeys.LiveReloadGrpcPort -> "8080",
+      DevSettingsKeys.LiveReloadIsDebug -> "true"
+    )
+  }
+
+}

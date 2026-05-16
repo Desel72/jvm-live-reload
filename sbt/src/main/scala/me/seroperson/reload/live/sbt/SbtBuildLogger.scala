@@ -24,23 +24,28 @@ private[sbt] class SbtBuildLogger(
     private val logger: Logger
 ) extends BuildLogger {
 
+  // Direct stderr stream that bypasses sbt's System.err replacement
+  private val directErr = new java.io.PrintStream(
+    new java.io.FileOutputStream(java.io.FileDescriptor.out), true
+  )
+
   override def debug(message: String): Unit = {
     if (settings.isDebug) {
-      println(message)
+      directErr.println(message)
       logger.debug(message)
     }
   }
 
   override def info(message: String): Unit = {
     if (settings.isDebug) {
-      println(message)
+      directErr.println(message)
     }
     logger.info(message)
   }
 
   override def warn(message: String): Unit = {
     if (settings.isDebug) {
-      println(message)
+      directErr.println(message)
     }
     logger.warn(message)
   }
@@ -61,7 +66,7 @@ private[sbt] class SbtBuildLogger(
 
   override def error(message: String): Unit = {
     if (settings.isDebug) {
-      println(message)
+      System.err.println(message)
     }
     logger.error(message)
   }

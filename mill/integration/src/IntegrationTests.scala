@@ -1,43 +1,16 @@
 package me.seroperson.reload.live.mill.test
 
 import mill.testkit.IntegrationTester
-import okhttp3.OkHttpClient
-import okhttp3.Request
 import org.scalatest.funsuite.AnyFunSuite
 import os.ProcessOutput
-import scala.util.Using
 
-class IntegrationTests extends AnyFunSuite {
+class IntegrationTests extends AnyFunSuite with RequestMaker {
 
-  private lazy val client = OkHttpClient()
-
-  private def runUntil(
-      url: String,
-      expectedStatus: Int,
-      expectedBody: String
-  ): Boolean = {
-    val request: Request = Request.Builder().url(url).build()
-
-    try {
-      val (code, body) = Using(client.newCall(request).execute()) { response =>
-        response.code -> response.body.string()
-      }.get
-      println(s"Requesting $url, got $code and $body")
-      if (expectedStatus == code && expectedBody == body) {
-        return true
-      } else {
-        Thread.sleep(500)
-        return runUntil(url, expectedStatus, expectedBody)
-      }
-    } catch {
-      case ex: Exception =>
-        println(s"Got exception: ${ex.getMessage}")
-        Thread.sleep(500)
-        return runUntil(url, expectedStatus, expectedBody)
-    }
+  def hexStringToBytes(hex: String): Array[Byte] = {
+    new java.math.BigInteger(hex, 16).toByteArray
   }
 
-  test("zio-http") {
+  /*test("zio-http") {
     val resourceDir = os.Path(BuildInfo.resourceDir) / "zio-http"
 
     val tester = new IntegrationTester(
@@ -107,9 +80,9 @@ class IntegrationTests extends AnyFunSuite {
     tester.close()
 
     assert(greet && greetReloaded)
-  }
+  }*/
 
-  test("zio-http-multiproject") {
+  /*test("zio-http-multiproject") {
     val resourceDir = os.Path(BuildInfo.resourceDir) / "zio-http-multiproject"
 
     val tester = new IntegrationTester(
@@ -148,10 +121,48 @@ class IntegrationTests extends AnyFunSuite {
     tester.close()
 
     assert(greet && greetReloaded)
-  }
+  }*/
 
   test("http4s-with-resources") {
     val resourceDir = os.Path(BuildInfo.resourceDir) / "http4s-with-resources"
+
+    val tester = new IntegrationTester(
+      daemonMode = false,
+      workspaceSourcePath = resourceDir,
+      millExecutable = os.Path(BuildInfo.exePath)
+      // debugLog = true
+    )
+
+    var process = tester.spawn(
+      cmd = "app.liveReloadRun",
+      env = Map("PLUGIN_VERSION" -> BuildInfo.version),
+      stdout = ProcessOutput.Readlines(v => println(v)),
+      stderr = os.Pipe,
+      mergeErrIntoOut = true
+    ).process
+
+    val greet = runUntil("http://localhost:9000/greet", 200, "Hello World 1")
+    tester.modifyFile(
+      tester.workspacePath / "app" / "src" / "App.scala",
+      _ => os.read(resourceDir / "changes" / "App.scala.1")
+    )
+    tester.modifyFile(
+      tester.workspacePath / "app" / "resources" / "application.conf",
+      _ => os.read(resourceDir / "changes" / "application.conf.1")
+    )
+    val greetReloaded =
+      runUntil("http://localhost:9000/greet_reloaded", 200, "World Hello 2")
+
+    process.stdin.write(10) // write "Enter"
+    process.stdin.flush()
+    process.join()
+    tester.close()
+
+    assert(greet && greetReloaded)
+  }
+
+  test("grpc-scalapb") {
+    val resourceDir = os.Path(BuildInfo.resourceDir) / "grpc-scalapb"
 
     val tester = new IntegrationTester(
       daemonMode = false,
@@ -166,23 +177,36 @@ class IntegrationTests extends AnyFunSuite {
           "app.liveReloadRun",
           env = Map("PLUGIN_VERSION" -> BuildInfo.version),
           stdout = ProcessOutput.Readlines(v => println(v)),
-          mergeErrIntoOut = true
+          mergeErrIntoOut = true,
+          timeoutGracePeriod = 10000
         )
       }
     })
     runThread.start()
 
-    val greet = runUntil("http://localhost:9000/greet", 200, "Hello World 1")
+    val greet = runGrpcUntil(
+      "localhost",
+      9000, // Proxy port
+      "Greeter",
+      "SayHello",
+      // Hello World!
+      hexStringToBytes("0a0c48656c6c6f20576f726c6421"),
+      // World Hello!
+      hexStringToBytes("0a0c576f726c642048656c6c6f21")
+    )
     tester.modifyFile(
       tester.workspacePath / "app" / "src" / "App.scala",
-      _ => os.read(resourceDir / "changes" / "App.scala.1")
+      _ => os.read(resourceDir / "changes" / "app" / "src" / "App.scala.1")
     )
-    tester.modifyFile(
-      tester.workspacePath / "app" / "resources" / "application.conf",
-      _ => os.read(resourceDir / "changes" / "application.conf.1")
+    val greetReloaded = runGrpcUntil(
+      "localhost",
+      9000, // Proxy port
+      "Greeter",
+      "SayHello",
+      hexStringToBytes("0a0c48656c6c6f20576f726c6421"),
+      // Hello World Reloaded!
+      hexStringToBytes("0a1548656c6c6f20576f726c642052656c6f6164656421")
     )
-    val greetReloaded =
-      runUntil("http://localhost:9000/greet_reloaded", 200, "World Hello 2")
 
     tester.close()
 

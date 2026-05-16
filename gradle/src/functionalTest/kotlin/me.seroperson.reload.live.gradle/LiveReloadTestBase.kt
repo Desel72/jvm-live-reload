@@ -1,9 +1,17 @@
 package me.seroperson.reload.live.gradle
 
+import io.grpc.CallOptions
+import io.grpc.ManagedChannel
+import io.grpc.ManagedChannelBuilder
+import io.grpc.MethodDescriptor
+import io.grpc.stub.ClientCalls
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.gradle.testkit.runner.GradleRunner
+import java.io.ByteArrayInputStream
 import java.io.File
+import java.io.InputStream
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
 abstract class LiveReloadTestBase {
@@ -63,5 +71,86 @@ abstract class LiveReloadTestBase {
             Thread.sleep(500)
             return runUntil(isBuildRunning, url, expectedStatus, expectedBody)
         }
+    }
+
+    /**
+     * Makes a unary GRPC call using generic byte array marshalling. This allows testing GRPC servers
+     * without generated code.
+     */
+    fun grpcCall(
+        host: String,
+        port: Int,
+        serviceName: String,
+        methodName: String,
+        request: ByteArray,
+    ): ByteArray {
+        val channel: ManagedChannel =
+            ManagedChannelBuilder.forAddress(host, port).usePlaintext().build()
+        try {
+            val methodDescriptor =
+                MethodDescriptor
+                    .newBuilder<ByteArray, ByteArray>()
+                    .setType(MethodDescriptor.MethodType.UNARY)
+                    .setFullMethodName("$serviceName/$methodName")
+                    .setRequestMarshaller(ByteArrayMarshaller())
+                    .setResponseMarshaller(ByteArrayMarshaller())
+                    .build()
+
+            return ClientCalls.blockingUnaryCall(channel, methodDescriptor, CallOptions.DEFAULT, request)
+        } finally {
+            channel.shutdown().awaitTermination(5, TimeUnit.SECONDS)
+        }
+    }
+
+    /** Runs GRPC call until expected response is received. */
+    fun runGrpcUntil(
+        isBuildRunning: AtomicBoolean,
+        host: String,
+        port: Int,
+        serviceName: String,
+        methodName: String,
+        request: ByteArray,
+        expectedResponse: ByteArray,
+    ): Boolean {
+        if (!isBuildRunning.get()) {
+            return false
+        }
+        try {
+            val response = grpcCall(host, port, serviceName, methodName, request)
+            println("GRPC call to $serviceName/$methodName, got ${response.contentToString()}")
+            if (response.contentEquals(expectedResponse)) {
+                return true
+            } else {
+                Thread.sleep(500)
+                return runGrpcUntil(
+                    isBuildRunning,
+                    host,
+                    port,
+                    serviceName,
+                    methodName,
+                    request,
+                    expectedResponse,
+                )
+            }
+        } catch (ex: Exception) {
+            println("GRPC exception: ${ex.message}")
+            Thread.sleep(500)
+            return runGrpcUntil(
+                isBuildRunning,
+                host,
+                port,
+                serviceName,
+                methodName,
+                request,
+                expectedResponse,
+            )
+        }
+    }
+
+    /** Simple marshaller for byte arrays - allows generic GRPC calls without proto. */
+    private class ByteArrayMarshaller : MethodDescriptor.Marshaller<ByteArray> {
+        override fun stream(value: ByteArray): InputStream = ByteArrayInputStream(value)
+
+        override fun parse(stream: InputStream): ByteArray = stream.readBytes()
     }
 }

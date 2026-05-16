@@ -10,4 +10,5 @@ class LiveReloadRunParams(
     val startupHooks: List<String>,
     val shutdownHooks: List<String>,
     val propagateEnv: Map<String, String>,
+    val serverType: ServerType,
 )

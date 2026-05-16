@@ -63,6 +63,11 @@ open class LiveReloadRunHandle
             lock.writeLock().lock()
             this.deployment = deployment
             try {
+                val serverClass =
+                    when (params.serverType) {
+                        ServerType.HTTP -> "me.seroperson.reload.live.webserver.DevServerStart"
+                        ServerType.GRPC -> "me.seroperson.reload.live.webserver.grpc.GrpcDevServerStart"
+                    }
                 val params =
                     StartParams(
                         // todo: deal with args, properties and java options
@@ -70,7 +75,7 @@ open class LiveReloadRunHandle
                         params.dependencyClasspath.toList(),
                         // monitoredFiles
                         listOf(),
-                        "me.seroperson.reload.live.webserver.DevServerStart",
+                        serverClass,
                         params.mainClass,
                         params.startupHooks,
                         params.shutdownHooks,

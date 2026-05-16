@@ -40,4 +40,16 @@ object SbtCompat {
   def toNioPath(f: File)(implicit conv: FileConverter): NioPath = f.toPath
 
   def fileName(file: FileRef): String = file.getName
+
+  /** sbt 1.x already uses directories for exportedProducts, so we keep
+    * the same behavior as the original liveReloaderClasspath.
+    */
+  def reloaderClasspathTask: Def.Initialize[Task[Classpath]] = Def.task {
+    Classpaths
+      .concatDistinct(
+        Runtime / Keys.exportedProducts,
+        Runtime / Keys.internalDependencyClasspath
+      )
+      .value
+  }
 }

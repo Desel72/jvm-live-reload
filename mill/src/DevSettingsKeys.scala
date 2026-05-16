@@ -6,9 +6,14 @@ object DevSettingsKeys {
   // format: off
   val LiveReloadProxyHttpHost: String = DevServerSettings.LiveReloadProxyHttpHost
   val LiveReloadProxyHttpPort: String = DevServerSettings.LiveReloadProxyHttpPort
+  val LiveReloadProxyGrpcHost: String = DevServerSettings.LiveReloadProxyGrpcHost
+  val LiveReloadProxyGrpcPort: String = DevServerSettings.LiveReloadProxyGrpcPort
   val LiveReloadHttpHost: String = DevServerSettings.LiveReloadHttpHost
   val LiveReloadHttpPort: String = DevServerSettings.LiveReloadHttpPort
+  val LiveReloadGrpcHost: String = DevServerSettings.LiveReloadGrpcHost
+  val LiveReloadGrpcPort: String = DevServerSettings.LiveReloadGrpcPort
   val LiveReloadHealthPath: String = DevServerSettings.LiveReloadHealthPath
+  val LiveReloadGrpcHealthService: String = DevServerSettings.LiveReloadGrpcHealthService
   val LiveReloadIsDebug: String = DevServerSettings.LiveReloadIsDebug
   // format: on
 }

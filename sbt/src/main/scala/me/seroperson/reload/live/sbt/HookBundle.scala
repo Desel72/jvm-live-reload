@@ -39,3 +39,14 @@ case object CaskAppHookBundle extends HookBundle {
     LiveKeys.HookClassnames.RestApiHealthCheckShutdown
   )
 }
+
+case object GrpcAppHookBundle extends HookBundle {
+  def startupHooks: Seq[String] = Seq(
+    LiveKeys.HookClassnames.GrpcHealthCheckStartup
+  )
+  def shutdownHooks: Seq[String] = Seq(
+    LiveKeys.HookClassnames.ThreadInterruptShutdown,
+    LiveKeys.HookClassnames.RuntimeShutdown,
+    LiveKeys.HookClassnames.GrpcHealthCheckShutdown
+  )
+}

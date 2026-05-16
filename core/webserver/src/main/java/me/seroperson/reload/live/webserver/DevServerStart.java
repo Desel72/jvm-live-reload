@@ -4,43 +4,21 @@ import io.undertow.Undertow;
 import io.undertow.UndertowOptions;
 import io.undertow.server.handlers.ResponseCodeHandler;
 import io.undertow.server.handlers.proxy.ProxyHandler;
-import java.io.Closeable;
-import java.io.IOException;
-import java.lang.reflect.InvocationTargetException;
 import java.net.URI;
 import java.util.List;
-import java.util.Objects;
-import java.util.concurrent.atomic.AtomicBoolean;
-import me.seroperson.reload.live.ReloadGeneration;
-import me.seroperson.reload.live.UnrecoverableException;
+import me.seroperson.reload.live.BaseDevServerStart;
 import me.seroperson.reload.live.build.BuildLink;
 import me.seroperson.reload.live.build.BuildLogger;
-import me.seroperson.reload.live.build.ReloadableServer;
-import me.seroperson.reload.live.hook.Hook;
 import me.seroperson.reload.live.settings.DevServerSettings;
 import org.xnio.OptionMap;
 import org.xnio.Options;
 import org.xnio.Xnio;
 import org.xnio.XnioWorker;
 
-public class DevServerStart implements ReloadableServer {
+public class DevServerStart extends BaseDevServerStart<Undertow> {
 
-  private final AtomicBoolean isRunning = new AtomicBoolean(false);
-  private Undertow server;
   private XnioWorker currentGenerationWorker;
   private ReloadableProxyClient proxyClientProvider;
-  private ThreadGroup appThreadGroup;
-  private Thread appThread;
-
-  private ClassLoader classLoader;
-  private final String mainClass;
-
-  private final List<Hook> startupHooks;
-  private final List<Hook> shutdownHooks;
-
-  private final DevServerSettings settings;
-  private final BuildLogger logger;
-  private final BuildLink buildLink;
 
   public DevServerStart(
       DevServerSettings settings,
@@ -49,23 +27,7 @@ public class DevServerStart implements ReloadableServer {
       String mainClass,
       List<String> startupHookClasses,
       List<String> shutdownHookClasses) {
-    this.settings = settings;
-    this.mainClass = mainClass;
-    this.buildLink = buildLink;
-    this.logger = logger;
-
-    startupHooks =
-        startupHookClasses.stream()
-            .map(this::initHook)
-            .filter(Objects::nonNull)
-            .filter(Hook::isAvailable)
-            .toList();
-    shutdownHooks =
-        shutdownHookClasses.stream()
-            .map(this::initHook)
-            .filter(Objects::nonNull)
-            .filter(Hook::isAvailable)
-            .toList();
+    super(settings, buildLink, logger, mainClass, startupHookClasses, shutdownHookClasses);
   }
 
   @Override
@@ -96,149 +58,33 @@ public class DevServerStart implements ReloadableServer {
 
     var handler = new ReloadHandler(logger, this, proxyHandler);
 
-    server =
+    proxyServer =
         Undertow.builder()
             .addHttpListener(settings.getProxyHttpPort(), settings.getProxyHttpHost())
             .setHandler(handler)
             .setServerOption(UndertowOptions.SHUTDOWN_TIMEOUT, 1000)
             .build();
-    server.start();
+    proxyServer.start();
 
     appThreadGroup = new ThreadGroup("app");
 
     isRunning.set(true);
   }
 
-  private Hook initHook(String className) {
-    try {
-      return (Hook) Class.forName(className).getDeclaredConstructor().newInstance();
-    } catch (ClassNotFoundException
-        | InstantiationException
-        | InvocationTargetException
-        | IllegalAccessException
-        | NoSuchMethodException e) {
-      logger.error("Unable to initialize hook: " + className, e);
-      return null;
-    }
-  }
-
-  private synchronized void startInternal(ReloadGeneration generation) {
-    if (!isRunning.get()) {
-      throw new UnrecoverableException(
-          "Unable to start underlying application without a running proxy.");
-    }
-
+  @Override
+  protected void prepareServerForNewGeneration() {
     createCurrentGenerationWorker();
     proxyClientProvider.setCurrentGenerationWorker(currentGenerationWorker);
-
-    this.classLoader = generation.getReloadedClassLoader();
-    this.appThread =
-        new Thread(
-            appThreadGroup,
-            () -> {
-              logger.info("🚀 Starting " + mainClass);
-              try {
-                Class<?> clazz = classLoader.loadClass(mainClass);
-                var mainMethod = clazz.getMethod("main", String[].class);
-                var currentThread = Thread.currentThread();
-                logger.debug(
-                    "Running with Context ClassLoader: "
-                        + currentThread.getContextClassLoader()
-                        + " in thread "
-                        + currentThread);
-                mainMethod.invoke(null, (Object) new String[0]);
-                logger.debug("After Application.main(String[]) execution");
-              } catch (ClassNotFoundException | NoSuchMethodException | IllegalAccessException e) {
-                logger.error("Failed to invoke main method on " + mainClass, e);
-                stopInternal();
-                throw new RuntimeException(e);
-              } catch (InvocationTargetException e) {
-                // Don't log InterruptedException, as likely they're intended
-                if (!(e.getCause() instanceof InterruptedException)) {
-                  logger.error("Error in application main thread", e);
-                }
-              }
-            },
-            "main");
-    appThread.setContextClassLoader(classLoader);
-    appThread.start();
-
-    runHooks(appThread, classLoader, startupHooks);
   }
 
-  private synchronized void stopInternal() {
+  @Override
+  protected void cleanupServerForOldGeneration() {
     currentGenerationWorker.shutdownNow();
-
-    if (appThread != null) {
-      logger.debug("Stopping " + mainClass);
-      runHooks(appThread, classLoader, shutdownHooks);
-      appThread = null;
-    }
-
-    if (classLoader != null) {
-      logger.debug("Cleaning up old ClassLoader");
-      if (classLoader instanceof Closeable) {
-        try {
-          ((Closeable) classLoader).close();
-        } catch (Exception e) {
-          logger.error("Failed to close class loader", e);
-        }
-      }
-      classLoader = null;
-      System.gc();
-    }
-  }
-
-  private void runHooks(Thread th, ClassLoader cl, List<Hook> hooks) {
-    hooks.forEach(
-        (v) -> {
-          var hookClassName = v.getClass().getSimpleName();
-          logger.debug("Running " + hookClassName);
-          long start = System.currentTimeMillis();
-          v.hook(th, cl, settings, logger);
-          long time = System.currentTimeMillis() - start;
-          logger.debug(hookClassName + " took " + time + "ms");
-        });
   }
 
   @Override
-  public synchronized void close() throws IOException {
-    if (isRunning.get()) {
-      logger.info("🛑 Stopping the application");
-      server.stop();
-      if (appThread != null) {
-        stopInternal();
-      }
-      buildLink.close();
-      isRunning.set(false);
-      logger.debug("Application and proxy server were successfully stopped");
-    }
-  }
-
-  @Override
-  public boolean reload() {
-    var reloadResult = buildLink.reload();
-    if (reloadResult instanceof ReloadGeneration) {
-      var casted = (ReloadGeneration) reloadResult;
-      // New application classes
-      logger.info("🔃 Reloading an application");
-      stopInternal();
-      startInternal(casted);
-      logger.debug("Finished reloading");
-      return true;
-    } else if (reloadResult == null) {
-      // No change in the application classes
-      logger.debug("No change in the application classes");
-      return false;
-    } else if (reloadResult instanceof Throwable) {
-      throw new RuntimeException((Throwable) reloadResult);
-    }
-    return false;
-  }
-
-  @Override
-  public boolean isRunning() {
-    return isRunning.get();
+  protected void stopProxyServer() {
+    proxyServer.stop();
   }
 
   private void createCurrentGenerationWorker() {
@@ -259,17 +105,6 @@ public class DevServerStart implements ReloadableServer {
     } catch (Exception e) {
       logger.error("Error during initializing proxy connection worker", e);
     }
-  }
-
-  private void dumpHooks() {
-    logger.debug("Found " + startupHooks.size() + " startup hooks:");
-    startupHooks.stream()
-        .map((v) -> "- " + v.getClass().getSimpleName() + ": " + v.description())
-        .forEach(logger::debug);
-    logger.debug("Found " + shutdownHooks.size() + " shutdown hooks:");
-    shutdownHooks.stream()
-        .map((v) -> "- " + v.getClass().getSimpleName() + ": " + v.description())
-        .forEach(logger::debug);
   }
 
   // Shameful copy-n-paste from cask.main.Main.silenceJboss

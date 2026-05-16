@@ -23,9 +23,14 @@ public final class DevServerSettings {
   private static final Pattern SYSTEM_PROPERTY = Pattern.compile("-D([^=]+)=(.*)");
   public static final String LiveReloadProxyHttpHost = "live.reload.proxy.http.host";
   public static final String LiveReloadProxyHttpPort = "live.reload.proxy.http.port";
+  public static final String LiveReloadProxyGrpcHost = "live.reload.proxy.grpc.host";
+  public static final String LiveReloadProxyGrpcPort = "live.reload.proxy.grpc.port";
   public static final String LiveReloadHttpHost = "live.reload.http.host";
   public static final String LiveReloadHttpPort = "live.reload.http.port";
+  public static final String LiveReloadGrpcHost = "live.reload.grpc.host";
+  public static final String LiveReloadGrpcPort = "live.reload.grpc.port";
   public static final String LiveReloadHealthPath = "live.reload.http.health";
+  public static final String LiveReloadGrpcHealthService = "live.reload.grpc.health.service";
   public static final String LiveReloadIsDebug = "live.reload.debug";
 
   private final Map<String, String> javaOptionProperties;
@@ -70,6 +75,40 @@ public final class DevServerSettings {
       new DevParameter<>(
           LiveReloadIsDebug, "LIVE_RELOAD_DEBUG", false, String::valueOf, Boolean::parseBoolean);
 
+  private final DevParameter<Integer> proxyGrpcPort =
+      new DevParameter<>(
+          LiveReloadProxyGrpcPort,
+          "LIVE_RELOAD_PROXY_GRPC_PORT",
+          9001,
+          String::valueOf,
+          Integer::parseInt);
+  private final DevParameter<String> proxyGrpcHost =
+      new DevParameter<>(
+          LiveReloadProxyGrpcHost,
+          "LIVE_RELOAD_PROXY_GRPC_HOST",
+          "localhost",
+          String::valueOf,
+          Function.identity());
+
+  private final DevParameter<Integer> grpcPort =
+      new DevParameter<>(
+          LiveReloadGrpcPort, "LIVE_RELOAD_GRPC_PORT", 8081, String::valueOf, Integer::parseInt);
+  private final DevParameter<String> grpcHost =
+      new DevParameter<>(
+          LiveReloadGrpcHost,
+          "LIVE_RELOAD_GRPC_HOST",
+          "localhost",
+          String::valueOf,
+          Function.identity());
+
+  private final DevParameter<String> grpcHealthService =
+      new DevParameter<>(
+          LiveReloadGrpcHealthService,
+          "LIVE_RELOAD_GRPC_HEALTH_SERVICE",
+          "grpc.health.v1.Health",
+          String::valueOf,
+          Function.identity());
+
   /**
    * Creates new development server settings.
    *
@@ -99,9 +138,14 @@ public final class DevServerSettings {
     merged.putAll(pluginSettings);
     proxyHttpPort.putInto(merged);
     proxyHttpHost.putInto(merged);
+    proxyGrpcPort.putInto(merged);
+    proxyGrpcHost.putInto(merged);
     httpPort.putInto(merged);
     httpHost.putInto(merged);
+    grpcPort.putInto(merged);
+    grpcHost.putInto(merged);
     healthCheckPath.putInto(merged);
+    grpcHealthService.putInto(merged);
     debug.putInto(merged);
     return merged;
   }
@@ -158,6 +202,52 @@ public final class DevServerSettings {
    */
   public boolean isDebug() {
     return debug.getValueOrDefault(javaOptionProperties, argsProperties, pluginSettings);
+  }
+
+  /**
+   * Gets the GRPC port for the proxy server.
+   *
+   * @return the proxy server GRPC port (default: 9001)
+   */
+  public Integer getProxyGrpcPort() {
+    return proxyGrpcPort.getValueOrDefault(javaOptionProperties, argsProperties, pluginSettings);
+  }
+
+  /**
+   * Gets the GRPC host for the proxy server.
+   *
+   * @return the proxy server GRPC host (default: "localhost")
+   */
+  public String getProxyGrpcHost() {
+    return proxyGrpcHost.getValueOrDefault(javaOptionProperties, argsProperties, pluginSettings);
+  }
+
+  /**
+   * Gets the GRPC port for the target application server.
+   *
+   * @return the target server GRPC port (default: 8081)
+   */
+  public Integer getGrpcPort() {
+    return grpcPort.getValueOrDefault(javaOptionProperties, argsProperties, pluginSettings);
+  }
+
+  /**
+   * Gets the GRPC host for the target application server.
+   *
+   * @return the target server GRPC host (default: "localhost")
+   */
+  public String getGrpcHost() {
+    return grpcHost.getValueOrDefault(javaOptionProperties, argsProperties, pluginSettings);
+  }
+
+  /**
+   * Gets the GRPC Health Check service name for the target application server.
+   *
+   * @return the GRPC health service name (default: "grpc.health.v1.Health")
+   */
+  public String getGrpcHealthService() {
+    return grpcHealthService.getValueOrDefault(
+        javaOptionProperties, argsProperties, pluginSettings);
   }
 
   /**

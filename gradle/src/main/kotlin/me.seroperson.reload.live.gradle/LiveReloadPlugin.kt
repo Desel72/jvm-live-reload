@@ -27,10 +27,14 @@ class LiveReloadPlugin : Plugin<Project> {
         val extension = createExtension(project)
         createRunTask(project, extension)
 
-        project.dependencies.add(
-            "implementation",
-            "me.seroperson:jvm-live-reload-webserver:${BuildConfig.VERSION}",
-        )
+        project.afterEvaluate {
+            val dependency =
+                when (extension.serverType.get()) {
+                    ServerType.HTTP -> "me.seroperson:jvm-live-reload-webserver:${BuildConfig.VERSION}"
+                    ServerType.GRPC -> "me.seroperson:jvm-live-reload-webserver-grpc:${BuildConfig.VERSION}"
+                }
+            project.dependencies.add("implementation", dependency)
+        }
     }
 
     private fun findClasspathDirectories(project: Project?): ConfigurableFileCollection? {
@@ -70,6 +74,8 @@ class LiveReloadPlugin : Plugin<Project> {
                     t.mainClass.convention(javaApplicationExtension(project).mainClass)
                     t.startupHooks.convention(extension.startupHooks)
                     t.shutdownHooks.convention(extension.shutdownHooks)
+                    t.propagateEnv.convention(extension.propagateEnv)
+                    t.serverType.convention(extension.serverType)
 
                     val runtime = project.configurations.getByName(RUNTIME_CLASSPATH_CONFIGURATION_NAME)
                     t.runtimeClasspath.from(runtime.incoming.files)

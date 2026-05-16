@@ -1,6 +1,6 @@
 package sbt
 
-import sbt.util.LoggerContext
+import sbt.util.{Logger, LoggerContext}
 
 object SbtLoggerContextAccess {
 
@@ -9,5 +9,9 @@ object SbtLoggerContextAccess {
   )
 
   def loggerContextKey: AttributeKey[LoggerContext] = Keys.loggerContext
+
+  def logger(ctx: LoggerContext): Logger = ctx.logger(
+    "jvm-live-reload", None, None
+  )
 
 }

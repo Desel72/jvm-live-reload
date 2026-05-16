@@ -54,4 +54,25 @@ object SbtCompat:
 
   inline def fileName(file: FileRef): String = file.name
 
+  /** In sbt 2.x, exportedProducts returns JARs from disk cache.
+    * For live reload, we need the raw class/resource directories
+    * so that file-level changes can be detected.
+    */
+  def reloaderClasspathTask: Def.Initialize[Task[Classpath]] = Def.task {
+    // Trigger resource copying so classDirectory has fresh resources
+    val _ = (Compile / Keys.copyResources).value
+    // Use classDirectory (contains compiled classes + copied resources) instead
+    // of exportedProducts (which returns a packaged JAR in sbt 2.x where
+    // file-level mtime changes aren't detected by DevServerReloader).
+    // For multi-project builds, include dependent projects via
+    // Compile / internalDependencyClasspath (not Runtime, which would
+    // also include the current project's exportedProducts JAR and cause
+    // duplicate entry errors in packageBin).
+    val fc = Keys.fileConverter.value
+    val classDir = (Compile / Keys.classDirectory).value
+    val classDirVf = fc.toVirtualFile(classDir.toPath)
+    val internalDeps = (Compile / Keys.internalDependencyClasspath).value
+    Attributed.blank(classDirVf) +: internalDeps
+  }
+
 end SbtCompat

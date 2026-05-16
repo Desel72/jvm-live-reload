@@ -55,6 +55,10 @@ testing {
                     // functionalTest test suite depends on the production code in tests
                     implementation(project())
                     implementation("com.squareup.okhttp3:okhttp:5.2.1")
+                    // GRPC client dependencies for functional tests
+                    implementation("io.grpc:grpc-netty-shaded:1.72.0")
+                    implementation("io.grpc:grpc-stub:1.72.0")
+                    implementation("io.grpc:grpc-protobuf:1.72.0")
                 }
             }
     }

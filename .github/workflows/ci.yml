@@ -40,7 +40,7 @@ jobs:
           sbt-runner-version: 1.12.0
       - uses: zhutmost/setup-mill@main
         with:
-          mill-version: 1.1.0-RC2
+          mill-version: 1.1.2
       - uses: gradle/actions/setup-gradle@v5
       - uses: VirtusLab/scala-cli-setup@v1.5
 
@@ -81,7 +81,7 @@ jobs:
           sbt-runner-version: 1.12.0
       - uses: zhutmost/setup-mill@main
         with:
-          mill-version: 1.1.0-RC2
+          mill-version: 1.1.2
       - uses: gradle/actions/setup-gradle@v5
       - uses: VirtusLab/scala-cli-setup@v1.5
 
