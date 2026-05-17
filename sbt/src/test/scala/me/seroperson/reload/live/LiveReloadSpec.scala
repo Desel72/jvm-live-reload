@@ -2,8 +2,8 @@ package me.seroperson.reload.live
 
 class LiveReloadSpec extends LiveReloadBase {
 
-  test("http4s - live reload on source change") {
-    withRunner("http4s") { (runner, proxyPort) =>
+  testEach("http4s - live reload on source change") { sbtVersion =>
+    withRunner("http4s", sbtVersion) { (runner, proxyPort) =>
       runner.run("bgRun")
       verifyHttp("greet", 200, Some("Hello World"), proxyPort)
       runner.copyFile("changes/App.scala.1", "src/main/scala/App.scala")
@@ -12,8 +12,8 @@ class LiveReloadSpec extends LiveReloadBase {
     }
   }
 
-  test("zio-http - live reload on source change") {
-    withRunner("zio-http") { (runner, proxyPort) =>
+  testEach("zio-http - live reload on source change") { sbtVersion =>
+    withRunner("zio-http", sbtVersion) { (runner, proxyPort) =>
       runner.run("bgRun")
       verifyHttp("greet", 200, Some("Hello World"), proxyPort)
       runner.copyFile("changes/App.scala.1", "src/main/scala/App.scala")
@@ -22,8 +22,8 @@ class LiveReloadSpec extends LiveReloadBase {
     }
   }
 
-  test("cask - live reload on source change") {
-    withRunner("cask") { (runner, proxyPort) =>
+  testEach("cask - live reload on source change") { sbtVersion =>
+    withRunner("cask", sbtVersion) { (runner, proxyPort) =>
       runner.run("bgRun")
       verifyHttp("greet", 200, Some("Hello World"), proxyPort)
       runner.copyFile("changes/App.scala.1", "src/main/scala/App.scala")
@@ -32,8 +32,8 @@ class LiveReloadSpec extends LiveReloadBase {
     }
   }
 
-  test("http4s - add new file triggers reload") {
-    withRunner("http4s-add-new-file") { (runner, proxyPort) =>
+  testEach("http4s - add new file triggers reload") { sbtVersion =>
+    withRunner("http4s-add-new-file", sbtVersion) { (runner, proxyPort) =>
       runner.run("bgRun")
       verifyHttp("greet", 200, Some("Hello World"), proxyPort)
       runner.delete("src/main/scala/App.scala")
@@ -47,8 +47,8 @@ class LiveReloadSpec extends LiveReloadBase {
     }
   }
 
-  test("http4s - dotenv environment variables") {
-    withRunner("http4s-dotenv") { (runner, proxyPort) =>
+  testEach("http4s - dotenv environment variables") { sbtVersion =>
+    withRunner("http4s-dotenv", sbtVersion) { (runner, proxyPort) =>
       runner.run("bgRun")
       verifyHttp("greet", 200, Some("Hello World"), proxyPort)
       runner.copyFile("changes/App.scala.1", "src/main/scala/App.scala")
@@ -57,8 +57,8 @@ class LiveReloadSpec extends LiveReloadBase {
     }
   }
 
-  test("http4s - propagate-env environment variables") {
-    withRunner("http4s-propagate-env") { (runner, proxyPort) =>
+  testEach("http4s - propagate-env environment variables") { sbtVersion =>
+    withRunner("http4s-propagate-env", sbtVersion) { (runner, proxyPort) =>
       runner.run("bgRun")
       verifyHttp("greet", 200, Some("Hello World"), proxyPort)
       runner.copyFile("changes/App.scala.1", "src/main/scala/App.scala")
@@ -67,8 +67,8 @@ class LiveReloadSpec extends LiveReloadBase {
     }
   }
 
-  test("http4s - reload with resource files") {
-    withRunner("http4s-with-resources") { (runner, proxyPort) =>
+  testEach("http4s - reload with resource files") { sbtVersion =>
+    withRunner("http4s-with-resources", sbtVersion) { (runner, proxyPort) =>
       runner.run("bgRun")
       verifyHttp("greet", 200, Some("Hello World 1"), proxyPort)
       runner.copyFile("changes/App.scala.1", "src/main/scala/App.scala")
@@ -81,8 +81,8 @@ class LiveReloadSpec extends LiveReloadBase {
     }
   }
 
-  test("zio-http - reload with resource files") {
-    withRunner("zio-http-with-resources") { (runner, proxyPort) =>
+  testEach("zio-http - reload with resource files") { sbtVersion =>
+    withRunner("zio-http-with-resources", sbtVersion) { (runner, proxyPort) =>
       runner.run("bgRun")
       verifyHttp("greet", 200, Some("Hello World 1"), proxyPort)
       runner.copyFile("changes/App.scala.1", "src/main/scala/App.scala")
@@ -95,8 +95,8 @@ class LiveReloadSpec extends LiveReloadBase {
     }
   }
 
-  test("zio-http - multi-project reload") {
-    withRunner("zio-http-multiproject") { (runner, proxyPort) =>
+  testEach("zio-http - multi-project reload") { sbtVersion =>
+    withRunner("zio-http-multiproject", sbtVersion) { (runner, proxyPort) =>
       runner.run("project-a/bgRun")
       verifyHttp("greet", 200, Some("Hello World"), proxyPort)
       runner.copyFile(

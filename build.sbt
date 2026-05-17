@@ -153,7 +153,7 @@ lazy val `webserver` = (project in file("core/webserver"))
   )
   .dependsOn(`buildLink`)
 
-lazy val `webserver-grpc` = (project in file("core/webserver-grpc"))
+lazy val webserverGrpc = (project in file("core/webserver-grpc"))
   .settings(javaProjectSettings)
   .settings(
     name := "jvm-live-reload-webserver-grpc",

@@ -150,8 +150,11 @@ class GrpcLiveReloadSpec extends LiveReloadBase {
   }
 
   // sbt-protoc is only available for sbt 1.x
-  test("grpc-scalapb - live reload on source change") {
-    withSbt1Runner("grpc-scalapb") { (runner, proxyPort) =>
+  testEach(
+    "grpc-scalapb - live reload on source change",
+    versions = Seq("1.12.3")
+  ) { sbtVersion =>
+    withRunner("grpc-scalapb", sbtVersion) { (runner, proxyPort) =>
       runner.run("bgRun")
       // request: HelloRequest(name = "Hello World!")
       // response: HelloReply(message = "World Hello!")
@@ -203,70 +206,73 @@ class GrpcLiveReloadSpec extends LiveReloadBase {
     }
   }
 
-  test("grpc-reflection - bidi streaming reflection passthrough") {
-    withRunner("grpc-streaming") { (runner, proxyPort) =>
-      runner.run("bgRun")
-      pollUntil("reflection list services") {
-        val services = listServicesViaReflection(proxyPort)
-        assert(
-          services.contains("grpc.health.v1.Health"),
-          s"expected grpc.health.v1.Health in reflected services, got $services"
+  testEach("grpc-reflection - bidi streaming reflection passthrough") {
+    sbtVersion =>
+      withRunner("grpc-streaming", sbtVersion) { (runner, proxyPort) =>
+        runner.run("bgRun")
+        pollUntil("reflection list services") {
+          val services = listServicesViaReflection(proxyPort)
+          assert(
+            services.contains("grpc.health.v1.Health"),
+            s"expected grpc.health.v1.Health in reflected services, got $services"
+          )
+        }
+      }
+  }
+
+  testEach("grpc-streaming - live reload of a server-streaming method") {
+    sbtVersion =>
+      withRunner("grpc-streaming", sbtVersion) { (runner, proxyPort) =>
+        runner.run("bgRun")
+        verifyServerStreaming(
+          "greeter.Greeter",
+          "StreamGreet",
+          Array.emptyByteArray,
+          Seq("Hi-1", "Hi-2", "Hi-3"),
+          proxyPort
+        )
+        runner.copyFile("changes/App.scala.1", "src/main/scala/App.scala")
+        verifyServerStreaming(
+          "greeter.Greeter",
+          "StreamGreet",
+          Array.emptyByteArray,
+          Seq("Yo-1", "Yo-2", "Yo-3"),
+          proxyPort
         )
       }
-    }
   }
 
-  test("grpc-streaming - live reload of a server-streaming method") {
-    withRunner("grpc-streaming") { (runner, proxyPort) =>
-      runner.run("bgRun")
-      verifyServerStreaming(
-        "greeter.Greeter",
-        "StreamGreet",
-        Array.emptyByteArray,
-        Seq("Hi-1", "Hi-2", "Hi-3"),
-        proxyPort
-      )
-      runner.copyFile("changes/App.scala.1", "src/main/scala/App.scala")
-      verifyServerStreaming(
-        "greeter.Greeter",
-        "StreamGreet",
-        Array.emptyByteArray,
-        Seq("Yo-1", "Yo-2", "Yo-3"),
-        proxyPort
-      )
-    }
+  testEach("grpc-multiproject - reload triggered by sibling-project change") {
+    sbtVersion =>
+      withRunner("grpc-multiproject", sbtVersion) { (runner, proxyPort) =>
+        runner.run("project-a/bgRun")
+        verifyGrpc(
+          "greeter.Greeter",
+          "Greet",
+          "",
+          bytesToHex("Multi-Hi".getBytes("UTF-8")),
+          proxyPort
+        )
+        runner.copyFile(
+          "changes/App.scala.1",
+          "project-a/src/main/scala/App.scala"
+        )
+        runner.copyFile(
+          "changes/Greeting.scala.1",
+          "project-b/src/main/scala/Greeting.scala"
+        )
+        verifyGrpc(
+          "greeter.Greeter",
+          "Greet",
+          "",
+          bytesToHex("Multi-Yo!".getBytes("UTF-8")),
+          proxyPort
+        )
+      }
   }
 
-  test("grpc-multiproject - reload triggered by sibling-project change") {
-    withRunner("grpc-multiproject") { (runner, proxyPort) =>
-      runner.run("project-a/bgRun")
-      verifyGrpc(
-        "greeter.Greeter",
-        "Greet",
-        "",
-        bytesToHex("Multi-Hi".getBytes("UTF-8")),
-        proxyPort
-      )
-      runner.copyFile(
-        "changes/App.scala.1",
-        "project-a/src/main/scala/App.scala"
-      )
-      runner.copyFile(
-        "changes/Greeting.scala.1",
-        "project-b/src/main/scala/Greeting.scala"
-      )
-      verifyGrpc(
-        "greeter.Greeter",
-        "Greet",
-        "",
-        bytesToHex("Multi-Yo!".getBytes("UTF-8")),
-        proxyPort
-      )
-    }
-  }
-
-  test("grpc-scala3 - live reload on a Scala 3 grpc app") {
-    withRunner("grpc-scala3") { (runner, proxyPort) =>
+  testEach("grpc-scala3 - live reload on a Scala 3 grpc app") { sbtVersion =>
+    withRunner("grpc-scala3", sbtVersion) { (runner, proxyPort) =>
       runner.run("bgRun")
       verifyGrpc(
         "greeter.Greeter",
@@ -286,27 +292,28 @@ class GrpcLiveReloadSpec extends LiveReloadBase {
     }
   }
 
-  test("grpc-tls - live reload through full TLS proxy and backend") {
-    withRunner("grpc-tls") { (runner, proxyPort) =>
-      runner.run("bgRun")
-      val trust = new File(runner.baseDirectory, "cert.pem")
-      verifyGrpcTls(
-        "greeter.Greeter",
-        "Greet",
-        "",
-        bytesToHex("Secure-Hi".getBytes("UTF-8")),
-        proxyPort,
-        trust
-      )
-      runner.copyFile("changes/App.scala.1", "src/main/scala/App.scala")
-      verifyGrpcTls(
-        "greeter.Greeter",
-        "Greet",
-        "",
-        bytesToHex("Secure-Yo".getBytes("UTF-8")),
-        proxyPort,
-        trust
-      )
-    }
+  testEach("grpc-tls - live reload through full TLS proxy and backend") {
+    sbtVersion =>
+      withRunner("grpc-tls", sbtVersion) { (runner, proxyPort) =>
+        runner.run("bgRun")
+        val trust = new File(runner.baseDirectory, "cert.pem")
+        verifyGrpcTls(
+          "greeter.Greeter",
+          "Greet",
+          "",
+          bytesToHex("Secure-Hi".getBytes("UTF-8")),
+          proxyPort,
+          trust
+        )
+        runner.copyFile("changes/App.scala.1", "src/main/scala/App.scala")
+        verifyGrpcTls(
+          "greeter.Greeter",
+          "Greet",
+          "",
+          bytesToHex("Secure-Yo".getBytes("UTF-8")),
+          proxyPort,
+          trust
+        )
+      }
   }
 }

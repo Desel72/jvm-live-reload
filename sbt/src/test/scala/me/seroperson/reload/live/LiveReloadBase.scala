@@ -14,9 +14,22 @@ import scala.util.Try
 
 trait LiveReloadBase extends AnyFunSuite {
 
+  /** Sbt versions every scenario is exercised against by default */
+  protected val SupportedSbtVersions: Seq[String] =
+    Seq("1.12.3", "2.0.0-RC10")
+
   /** Hard cap on a single verify-after-reload poll loop. */
   protected val ReloadTimeoutMillis = 60_000L
   protected val RetryInterval = 1000L // ms
+
+  /** Registers `body` as one ScalaTest case per requested sbt version */
+  protected def testEach(
+      name: String,
+      versions: Seq[String] = SupportedSbtVersions
+  )(body: String => Unit): Unit =
+    versions.foreach { sbtVersion =>
+      test(s"$name [sbt=$sbtVersion]")(body(sbtVersion))
+    }
 
   /** Polls `attempt` until it succeeds or the deadline elapses. */
   protected def pollUntil(label: String)(attempt: => Unit): Unit = {
@@ -50,33 +63,14 @@ trait LiveReloadBase extends AnyFunSuite {
   }
 
   protected def withRunner(
-      resourceDir: String
+      resourceDir: String,
+      sbtVersion: String
   )(body: (SbtRunner, Int) => Unit): Unit = {
     val (proxyPort, appPort) = nextPortPair()
     val runner = SbtRunner
       .inTemp()
       .withDirectoryFromResources(resourceDir)
-      .withSbtVersion("2.0.0-RC10")
-      .withJvmOptions(
-        s"-Dproject.version=${BuildInfo.version}",
-        s"-Dtestkit.proxyPort=$proxyPort",
-        s"-Dtestkit.port=$appPort"
-      )
-      .withAttachedStdio()
-      .withDebugLogging()
-      .build()
-    try body(runner, proxyPort)
-    finally runner.close()
-  }
-
-  protected def withSbt1Runner(
-      resourceDir: String
-  )(body: (SbtRunner, Int) => Unit): Unit = {
-    val (proxyPort, appPort) = nextPortPair()
-    val runner = SbtRunner
-      .inTemp()
-      .withDirectoryFromResources(resourceDir)
-      .withSbtVersion("1.12.3")
+      .withSbtVersion(sbtVersion)
       .withJvmOptions(
         s"-Dproject.version=${BuildInfo.version}",
         s"-Dtestkit.proxyPort=$proxyPort",
