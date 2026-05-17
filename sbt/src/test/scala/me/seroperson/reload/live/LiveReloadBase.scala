@@ -8,15 +8,33 @@ import java.time.Duration
 import me.seroperson.reload.live.sbt.BuildInfo
 import me.seroperson.sbt.testkit.*
 import org.scalatest.funsuite.AnyFunSuite
-import scala.annotation.tailrec
 import scala.util.Failure
 import scala.util.Success
 import scala.util.Try
 
 trait LiveReloadBase extends AnyFunSuite {
 
-  protected val MaxRetries = 60
+  /** Hard cap on a single verify-after-reload poll loop. */
+  protected val ReloadTimeoutMillis = 60_000L
   protected val RetryInterval = 1000L // ms
+
+  /** Polls `attempt` until it succeeds or the deadline elapses. */
+  protected def pollUntil(label: String)(attempt: => Unit): Unit = {
+    val deadline = System.currentTimeMillis() + ReloadTimeoutMillis
+    var lastError: Option[Throwable] = None
+    while (System.currentTimeMillis() < deadline) {
+      Try(attempt) match {
+        case Success(_)  => return
+        case Failure(ex) =>
+          lastError = Some(ex)
+          Thread.sleep(RetryInterval)
+      }
+    }
+    throw new AssertionError(
+      s"$label timed out after ${ReloadTimeoutMillis}ms: ${lastError.map(_.getMessage).getOrElse("unknown")}",
+      lastError.orNull
+    )
+  }
 
   private val portCounter = new java.util.concurrent.atomic.AtomicInteger(19000)
 
@@ -84,36 +102,20 @@ trait LiveReloadBase extends AnyFunSuite {
       .GET()
       .build()
 
-    @tailrec
-    def attempt(remaining: Int): Unit = {
-      val result = Try {
-        val response =
-          httpClient.send(request, HttpResponse.BodyHandlers.ofString())
+    pollUntil(s"HTTP /$path (status=$expectedStatus, body=$expectedBody)") {
+      val response =
+        httpClient.send(request, HttpResponse.BodyHandlers.ofString())
+      assert(
+        response.statusCode() == expectedStatus,
+        s"Expected status $expectedStatus for /$path, got ${response.statusCode()}"
+      )
+      expectedBody.foreach { body =>
+        val actualBody = response.body()
         assert(
-          response.statusCode() == expectedStatus,
-          s"Expected status $expectedStatus for /$path, got ${response.statusCode()}"
+          actualBody == body,
+          s"Expected body '$body' for /$path, got '$actualBody'"
         )
-        expectedBody.foreach { body =>
-          val actualBody = response.body()
-          assert(
-            actualBody == body,
-            s"Expected body '$body' for /$path, got '$actualBody'"
-          )
-        }
-      }
-      result match {
-        case Success(_)                  => ()
-        case Failure(_) if remaining > 0 =>
-          Thread.sleep(RetryInterval)
-          attempt(remaining - 1)
-        case Failure(ex) =>
-          throw new AssertionError(
-            s"Failed to verify /$path (status=$expectedStatus, body=$expectedBody) after $MaxRetries attempts: ${ex.getMessage}",
-            ex
-          )
       }
     }
-
-    attempt(MaxRetries)
   }
 }

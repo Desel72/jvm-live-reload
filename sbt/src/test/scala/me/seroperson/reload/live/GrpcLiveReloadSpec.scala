@@ -17,14 +17,10 @@ import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.InputStream
 import java.util.concurrent.{TimeUnit => JTimeUnit}
-import scala.annotation.tailrec
 import scala.concurrent.Await
 import scala.concurrent.Promise
 import scala.concurrent.duration.*
 import scala.jdk.CollectionConverters.*
-import scala.util.Failure
-import scala.util.Success
-import scala.util.Try
 
 class GrpcLiveReloadSpec extends LiveReloadBase {
 
@@ -55,41 +51,25 @@ class GrpcLiveReloadSpec extends LiveReloadBase {
       .setFullMethodName(s"$service/$method")
       .build()
 
-    @tailrec
-    def attempt(remaining: Int): Unit = {
-      val result = Try {
-        val channel = ManagedChannelBuilder
-          .forAddress("localhost", port)
-          .usePlaintext()
-          .build()
-        try {
-          val response = ClientCalls.blockingUnaryCall(
-            channel.newCall(methodDescriptor, CallOptions.DEFAULT),
-            hexToBytes(requestHex)
-          )
-          val responseHex = bytesToHex(response)
-          assert(
-            responseHex == expectedResponseHex,
-            s"GRPC $service/$method: expected $expectedResponseHex, got $responseHex"
-          )
-        } finally {
-          channel.shutdownNow()
-        }
-      }
-      result match {
-        case Success(_)                  => ()
-        case Failure(_) if remaining > 0 =>
-          Thread.sleep(RetryInterval)
-          attempt(remaining - 1)
-        case Failure(ex) =>
-          throw new AssertionError(
-            s"Failed to verify GRPC $service/$method after $MaxRetries attempts: ${ex.getMessage}",
-            ex
-          )
+    pollUntil(s"GRPC $service/$method") {
+      val channel = ManagedChannelBuilder
+        .forAddress("localhost", port)
+        .usePlaintext()
+        .build()
+      try {
+        val response = ClientCalls.blockingUnaryCall(
+          channel.newCall(methodDescriptor, CallOptions.DEFAULT),
+          hexToBytes(requestHex)
+        )
+        val responseHex = bytesToHex(response)
+        assert(
+          responseHex == expectedResponseHex,
+          s"GRPC $service/$method: expected $expectedResponseHex, got $responseHex"
+        )
+      } finally {
+        channel.shutdownNow()
       }
     }
-
-    attempt(MaxRetries)
   }
 
   private def openChannel(port: Int, tlsTrust: Option[File]): ManagedChannel =
@@ -119,38 +99,22 @@ class GrpcLiveReloadSpec extends LiveReloadBase {
       .setFullMethodName(s"$service/$method")
       .build()
 
-    @tailrec
-    def attempt(remaining: Int): Unit = {
-      val result = Try {
-        val channel = openChannel(port, tlsTrust)
-        try {
-          val iterator = ClientCalls.blockingServerStreamingCall(
-            channel.newCall(methodDescriptor, CallOptions.DEFAULT),
-            request
-          )
-          val collected = iterator.asScala.map(new String(_, "UTF-8")).toList
-          assert(
-            collected == expected.toList,
-            s"streaming $service/$method: expected $expected, got $collected"
-          )
-        } finally {
-          channel.shutdownNow()
-        }
-      }
-      result match {
-        case Success(_)                  => ()
-        case Failure(_) if remaining > 0 =>
-          Thread.sleep(RetryInterval)
-          attempt(remaining - 1)
-        case Failure(ex) =>
-          throw new AssertionError(
-            s"Failed to verify streaming $service/$method after $MaxRetries attempts: ${ex.getMessage}",
-            ex
-          )
+    pollUntil(s"streaming $service/$method") {
+      val channel = openChannel(port, tlsTrust)
+      try {
+        val iterator = ClientCalls.blockingServerStreamingCall(
+          channel.newCall(methodDescriptor, CallOptions.DEFAULT),
+          request
+        )
+        val collected = iterator.asScala.map(new String(_, "UTF-8")).toList
+        assert(
+          collected == expected.toList,
+          s"streaming $service/$method: expected $expected, got $collected"
+        )
+      } finally {
+        channel.shutdownNow()
       }
     }
-
-    attempt(MaxRetries)
   }
 
   private def verifyGrpcTls(
@@ -167,38 +131,22 @@ class GrpcLiveReloadSpec extends LiveReloadBase {
       .setFullMethodName(s"$service/$method")
       .build()
 
-    @tailrec
-    def attempt(remaining: Int): Unit = {
-      val result = Try {
-        val channel = openChannel(port, Some(trust))
-        try {
-          val response = ClientCalls.blockingUnaryCall(
-            channel.newCall(methodDescriptor, CallOptions.DEFAULT),
-            hexToBytes(requestHex)
-          )
-          val responseHex = bytesToHex(response)
-          assert(
-            responseHex == expectedResponseHex,
-            s"GRPC $service/$method: expected $expectedResponseHex, got $responseHex"
-          )
-        } finally {
-          channel.shutdownNow()
-        }
-      }
-      result match {
-        case Success(_)                  => ()
-        case Failure(_) if remaining > 0 =>
-          Thread.sleep(RetryInterval)
-          attempt(remaining - 1)
-        case Failure(ex) =>
-          throw new AssertionError(
-            s"Failed to verify TLS GRPC $service/$method after $MaxRetries attempts: ${ex.getMessage}",
-            ex
-          )
+    pollUntil(s"TLS GRPC $service/$method") {
+      val channel = openChannel(port, Some(trust))
+      try {
+        val response = ClientCalls.blockingUnaryCall(
+          channel.newCall(methodDescriptor, CallOptions.DEFAULT),
+          hexToBytes(requestHex)
+        )
+        val responseHex = bytesToHex(response)
+        assert(
+          responseHex == expectedResponseHex,
+          s"GRPC $service/$method: expected $expectedResponseHex, got $responseHex"
+        )
+      } finally {
+        channel.shutdownNow()
       }
     }
-
-    attempt(MaxRetries)
   }
 
   // sbt-protoc is only available for sbt 1.x
@@ -258,25 +206,13 @@ class GrpcLiveReloadSpec extends LiveReloadBase {
   test("grpc-reflection - bidi streaming reflection passthrough") {
     withRunner("grpc-streaming") { (runner, proxyPort) =>
       runner.run("bgRun")
-      @tailrec
-      def attempt(remaining: Int): Set[String] = {
-        Try(listServicesViaReflection(proxyPort)) match {
-          case Success(services)           => services
-          case Failure(_) if remaining > 0 =>
-            Thread.sleep(RetryInterval)
-            attempt(remaining - 1)
-          case Failure(ex) =>
-            throw new AssertionError(
-              s"Reflection failed after $MaxRetries attempts: ${ex.getMessage}",
-              ex
-            )
-        }
+      pollUntil("reflection list services") {
+        val services = listServicesViaReflection(proxyPort)
+        assert(
+          services.contains("grpc.health.v1.Health"),
+          s"expected grpc.health.v1.Health in reflected services, got $services"
+        )
       }
-      val services = attempt(MaxRetries)
-      assert(
-        services.contains("grpc.health.v1.Health"),
-        s"expected grpc.health.v1.Health in reflected services, got $services"
-      )
     }
   }
 

@@ -1,6 +1,6 @@
 package build
 
-import contrib.scalapblib.*
+import mill.contrib.scalapblib.*
 import me.seroperson.reload.live.mill.*
 import mill.*
 import mill.scalalib.*

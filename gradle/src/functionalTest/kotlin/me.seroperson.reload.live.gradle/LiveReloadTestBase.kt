@@ -24,6 +24,10 @@ import java.util.concurrent.atomic.AtomicBoolean
 abstract class LiveReloadTestBase {
     private val client = OkHttpClient()
 
+    /** Hard cap on a single verify-after-reload poll loop. */
+    val reloadTimeoutMillis: Long = 60_000L
+    private val pollIntervalMillis: Long = 500L
+
     fun initGradleRunner(
         command: String,
         projectDir: File,
@@ -48,37 +52,45 @@ abstract class LiveReloadTestBase {
         return runner
     }
 
+    /** Poll an action until it returns true, the build dies, or the deadline elapses. */
+    private fun pollUntil(
+        label: String,
+        isBuildRunning: AtomicBoolean,
+        attempt: () -> Boolean,
+    ): Boolean {
+        val deadline = System.currentTimeMillis() + reloadTimeoutMillis
+        while (System.currentTimeMillis() < deadline) {
+            if (!isBuildRunning.get()) {
+                return false
+            }
+            try {
+                if (attempt()) {
+                    return true
+                }
+            } catch (ex: Exception) {
+                println("$label exception: ${ex.message}")
+            }
+            Thread.sleep(pollIntervalMillis)
+        }
+        println("$label timed out after ${reloadTimeoutMillis}ms")
+        return false
+    }
+
     fun runUntil(
         isBuildRunning: AtomicBoolean,
         url: String,
         expectedStatus: Int,
         expectedBody: String,
-    ): Boolean {
-        if (!isBuildRunning.get()) {
-            return false
-        }
-        val request: Request = Request.Builder().url(url).build()
-
-        try {
+    ): Boolean =
+        pollUntil("HTTP $url", isBuildRunning) {
+            val request: Request = Request.Builder().url(url).build()
             val (code, body) =
-                (
-                    client.newCall(request).execute().use { response ->
-                        response.code to response.body.string()
-                    }
-                )
+                client.newCall(request).execute().use { response ->
+                    response.code to response.body.string()
+                }
             println("Requesting $url, got $code and $body")
-            if (expectedStatus == code && expectedBody == body) {
-                return true
-            } else {
-                Thread.sleep(500)
-                return runUntil(isBuildRunning, url, expectedStatus, expectedBody)
-            }
-        } catch (ex: Exception) {
-            println("Got exception: ${ex.message}")
-            Thread.sleep(500)
-            return runUntil(isBuildRunning, url, expectedStatus, expectedBody)
+            expectedStatus == code && expectedBody == body
         }
-    }
 
     /**
      * Makes a unary GRPC call using generic byte array marshalling. This allows testing GRPC servers
@@ -118,41 +130,12 @@ abstract class LiveReloadTestBase {
         methodName: String,
         request: ByteArray,
         expectedResponse: ByteArray,
-    ): Boolean {
-        if (!isBuildRunning.get()) {
-            return false
-        }
-        try {
+    ): Boolean =
+        pollUntil("GRPC $serviceName/$methodName", isBuildRunning) {
             val response = grpcCall(host, port, serviceName, methodName, request)
             println("GRPC call to $serviceName/$methodName, got ${response.contentToString()}")
-            if (response.contentEquals(expectedResponse)) {
-                return true
-            } else {
-                Thread.sleep(500)
-                return runGrpcUntil(
-                    isBuildRunning,
-                    host,
-                    port,
-                    serviceName,
-                    methodName,
-                    request,
-                    expectedResponse,
-                )
-            }
-        } catch (ex: Exception) {
-            println("GRPC exception: ${ex.message}")
-            Thread.sleep(500)
-            return runGrpcUntil(
-                isBuildRunning,
-                host,
-                port,
-                serviceName,
-                methodName,
-                request,
-                expectedResponse,
-            )
+            response.contentEquals(expectedResponse)
         }
-    }
 
     /** Makes a server-streaming GRPC call, collecting all response messages until the stream ends. */
     fun serverStreamingCall(
@@ -198,36 +181,20 @@ abstract class LiveReloadTestBase {
         methodName: String,
         request: ByteArray,
         expected: List<ByteArray>,
-    ): Boolean {
-        if (!isBuildRunning.get()) {
-            return false
-        }
-        try {
+    ): Boolean =
+        pollUntil("GRPC streaming $serviceName/$methodName", isBuildRunning) {
             val collected = serverStreamingCall(host, port, serviceName, methodName, request)
-            val match =
+            val matched =
                 collected.size == expected.size &&
                     collected.zip(expected).all { (a, b) -> a.contentEquals(b) }
-            if (match) {
-                return true
+            if (!matched) {
+                println(
+                    "Streaming response did not match yet, got ${collected.map { String(it) }}, " +
+                        "expected ${expected.map { String(it) }}",
+                )
             }
-            println(
-                "Streaming response did not match yet, got ${collected.map { String(it) }}, " +
-                    "expected ${expected.map { String(it) }}",
-            )
-        } catch (ex: Exception) {
-            println("GRPC streaming exception: ${ex.message}")
+            matched
         }
-        Thread.sleep(500)
-        return runServerStreamingUntil(
-            isBuildRunning,
-            host,
-            port,
-            serviceName,
-            methodName,
-            request,
-            expected,
-        )
-    }
 
     /** Makes a unary gRPC call over TLS, trusting the provided cert file. */
     fun grpcTlsCall(
@@ -266,31 +233,15 @@ abstract class LiveReloadTestBase {
         request: ByteArray,
         expectedResponse: ByteArray,
         trust: File,
-    ): Boolean {
-        if (!isBuildRunning.get()) {
-            return false
-        }
-        try {
+    ): Boolean =
+        pollUntil("TLS GRPC $serviceName/$methodName", isBuildRunning) {
             val response = grpcTlsCall(host, port, serviceName, methodName, request, trust)
-            if (response.contentEquals(expectedResponse)) {
-                return true
+            val matched = response.contentEquals(expectedResponse)
+            if (!matched) {
+                println("TLS GRPC mismatch, got ${String(response)}")
             }
-            println("TLS GRPC mismatch, got ${String(response)}")
-        } catch (ex: Exception) {
-            println("TLS GRPC exception: ${ex.message}")
+            matched
         }
-        Thread.sleep(500)
-        return runGrpcTlsUntil(
-            isBuildRunning,
-            host,
-            port,
-            serviceName,
-            methodName,
-            request,
-            expectedResponse,
-            trust,
-        )
-    }
 
     /** Bidi-streaming reflection list-services call through the proxy. */
     fun reflectionListServices(
@@ -334,22 +285,15 @@ abstract class LiveReloadTestBase {
         host: String,
         port: Int,
         expectedService: String,
-    ): Boolean {
-        if (!isBuildRunning.get()) {
-            return false
-        }
-        try {
+    ): Boolean =
+        pollUntil("reflection list services", isBuildRunning) {
             val services = reflectionListServices(host, port)
-            if (expectedService in services) {
-                return true
+            val matched = expectedService in services
+            if (!matched) {
+                println("Reflection services so far: $services")
             }
-            println("Reflection services so far: $services")
-        } catch (ex: Exception) {
-            println("Reflection exception: ${ex.message}")
+            matched
         }
-        Thread.sleep(500)
-        return runReflectionUntil(isBuildRunning, host, port, expectedService)
-    }
 
     /** Simple marshaller for byte arrays - allows generic GRPC calls without proto. */
     private class ByteArrayMarshaller : MethodDescriptor.Marshaller<ByteArray> {

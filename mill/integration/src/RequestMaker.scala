@@ -25,34 +25,39 @@ import scala.util.Using
 
 trait RequestMaker {
 
+  /** Hard cap on a single verify-after-reload attempt. */
+  val ReloadTimeoutMillis = 60_000L
+  private val PollIntervalMillis = 500L
+
   private lazy val client = OkHttpClient()
+
+  /** Poll an action until it returns true or the deadline elapses. */
+  private def pollUntil(label: String)(attempt: () => Boolean): Boolean = {
+    val deadline = System.currentTimeMillis() + ReloadTimeoutMillis
+    while (System.currentTimeMillis() < deadline) {
+      try if (attempt()) return true
+      catch {
+        case ex: Exception => println(s"$label exception: ${ex.getMessage}")
+      }
+      Thread.sleep(PollIntervalMillis)
+    }
+    println(s"$label timed out after ${ReloadTimeoutMillis}ms")
+    false
+  }
 
   def runUntil(
       url: String,
       expectedStatus: Int,
       expectedBody: String
-  ): Boolean = {
+  ): Boolean = pollUntil(s"HTTP $url") { () =>
     val request: Request = Request.Builder().url(url).build()
-
-    try {
-      val (code, body) = Using(client.newCall(request).execute()) { response =>
-        Using(response.body()) { body =>
-          response.code -> body.string()
-        }.get
+    val (code, body) = Using(client.newCall(request).execute()) { response =>
+      Using(response.body()) { body =>
+        response.code -> body.string()
       }.get
-      println(s"Requesting $url, got $code and $body")
-      if (expectedStatus == code && expectedBody == body) {
-        return true
-      } else {
-        Thread.sleep(500)
-        return runUntil(url, expectedStatus, expectedBody)
-      }
-    } catch {
-      case ex: Exception =>
-        println(s"Got exception: ${ex.getMessage}")
-        Thread.sleep(500)
-        return runUntil(url, expectedStatus, expectedBody)
-    }
+    }.get
+    println(s"Requesting $url, got $code and $body")
+    expectedStatus == code && expectedBody == body
   }
 
   /** Runs GRPC call until expected response is received. Use
@@ -65,39 +70,12 @@ trait RequestMaker {
       methodName: String,
       request: Array[Byte],
       expectedResponse: Array[Byte]
-  ): Boolean = {
-    try {
-      val response =
-        grpcCall(host, port, serviceName, methodName, request)
-      println(
-        s"GRPC call to $serviceName/$methodName, got ${response.map("%02x".format(_)).mkString}"
-      )
-      if (response.sameElements(expectedResponse)) {
-        return true
-      } else {
-        Thread.sleep(500)
-        return runGrpcUntil(
-          host,
-          port,
-          serviceName,
-          methodName,
-          request,
-          expectedResponse
-        )
-      }
-    } catch {
-      case ex: Exception =>
-        println(s"GRPC exception: ${ex.getMessage}")
-        Thread.sleep(500)
-        return runGrpcUntil(
-          host,
-          port,
-          serviceName,
-          methodName,
-          request,
-          expectedResponse
-        )
-    }
+  ): Boolean = pollUntil(s"GRPC $serviceName/$methodName") { () =>
+    val response = grpcCall(host, port, serviceName, methodName, request)
+    println(
+      s"GRPC call to $serviceName/$methodName, got ${response.map("%02x".format(_)).mkString}"
+    )
+    response.sameElements(expectedResponse)
   }
 
   private def grpcCall(
@@ -155,36 +133,16 @@ trait RequestMaker {
       request: Array[Byte],
       expected: Seq[Array[Byte]],
       tlsTrust: Option[File] = None
-  ): Boolean = {
-    try {
-      val collected = serverStreamingCall(
-        host,
-        port,
-        serviceName,
-        methodName,
-        request,
-        tlsTrust
-      )
-      val match_ = collected.size == expected.size &&
-        collected.zip(expected).forall { case (a, b) => a.sameElements(b) }
-      if (match_) return true
+  ): Boolean = pollUntil(s"GRPC streaming $serviceName/$methodName") { () =>
+    val collected =
+      serverStreamingCall(host, port, serviceName, methodName, request, tlsTrust)
+    val matched = collected.size == expected.size &&
+      collected.zip(expected).forall { case (a, b) => a.sameElements(b) }
+    if (!matched)
       println(
         s"Streaming response did not match yet, got ${collected.map(new String(_, "UTF-8"))}"
       )
-    } catch {
-      case ex: Exception =>
-        println(s"GRPC streaming exception: ${ex.getMessage}")
-    }
-    Thread.sleep(500)
-    runServerStreamingUntil(
-      host,
-      port,
-      serviceName,
-      methodName,
-      request,
-      expected,
-      tlsTrust
-    )
+    matched
   }
 
   /** Runs a unary GRPC call over TLS until the expected response is received.
@@ -197,28 +155,13 @@ trait RequestMaker {
       request: Array[Byte],
       expectedResponse: Array[Byte],
       trust: File
-  ): Boolean = {
-    try {
-      val response =
-        grpcCall(host, port, serviceName, methodName, request, Some(trust))
-      if (response.sameElements(expectedResponse)) return true
-      println(
-        s"TLS GRPC mismatch, got ${response.map("%02x".format(_)).mkString}"
-      )
-    } catch {
-      case ex: Exception =>
-        println(s"TLS GRPC exception: ${ex.getMessage}")
-    }
-    Thread.sleep(500)
-    runGrpcTlsUntil(
-      host,
-      port,
-      serviceName,
-      methodName,
-      request,
-      expectedResponse,
-      trust
-    )
+  ): Boolean = pollUntil(s"TLS GRPC $serviceName/$methodName") { () =>
+    val response =
+      grpcCall(host, port, serviceName, methodName, request, Some(trust))
+    val matched = response.sameElements(expectedResponse)
+    if (!matched)
+      println(s"TLS GRPC mismatch, got ${response.map("%02x".format(_)).mkString}")
+    matched
   }
 
   private def serverStreamingCall(
@@ -259,17 +202,10 @@ trait RequestMaker {
       host: String,
       port: Int,
       expectedService: String
-  ): Boolean = {
-    try {
-      val services = reflectionListServices(host, port)
-      println(s"Reflection services: $services")
-      if (services.contains(expectedService)) return true
-    } catch {
-      case ex: Exception =>
-        println(s"Reflection exception: ${ex.getMessage}")
-    }
-    Thread.sleep(500)
-    runReflectionListServicesUntil(host, port, expectedService)
+  ): Boolean = pollUntil(s"reflection list services") { () =>
+    val services = reflectionListServices(host, port)
+    println(s"Reflection services: $services")
+    services.contains(expectedService)
   }
 
   private def reflectionListServices(host: String, port: Int): Set[String] = {
