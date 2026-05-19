@@ -32,6 +32,19 @@ class LiveReloadSpec extends LiveReloadBase {
     }
   }
 
+  testEach(
+    "cask - hung main thread triggers unrecoverable shutdown",
+    Seq("2.0.0-RC10")
+  ) { sbtVersion =>
+    withRunner("cask-hang", sbtVersion) { (runner, proxyPort) =>
+      runner.run("bgRun")
+      verifyHttp("greet", 200, Some("Hello World"), proxyPort)
+      runner.copyFile("changes/App.scala.1", "src/main/scala/App.scala")
+      verifyHttp("greet", 503, Some("dev server stopped"), proxyPort)
+      verifyPortClosed(proxyPort)
+    }
+  }
+
   testEach("http4s - add new file triggers reload") { sbtVersion =>
     withRunner("http4s-add-new-file", sbtVersion) { (runner, proxyPort) =>
       runner.run("bgRun")
