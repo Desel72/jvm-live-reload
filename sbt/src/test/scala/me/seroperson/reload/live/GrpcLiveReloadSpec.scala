@@ -315,7 +315,7 @@ class GrpcLiveReloadSpec extends LiveReloadBase {
         bytesToHex("Scala3-Hi".getBytes("UTF-8")),
         proxyPort
       )
-      verifyTcpClosed(externalAddress.get, proxyPort)
+      verifyPortClosed(proxyPort, externalAddress.get)
     }
   }
 

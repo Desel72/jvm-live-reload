@@ -91,14 +91,18 @@ trait LiveReloadBase extends AnyFunSuite {
     finally runner.close()
   }
 
-  /** Polls until a TCP connect to `port` is refused, ie. nothing is listening
+  /** Polls until a TCP connect to `host:port` is refused, ie. nothing is
+    * listening
     */
-  protected def verifyPortClosed(port: Int): Unit = {
-    pollUntil(s"TCP connect to $port should be refused") {
+  protected def verifyPortClosed(
+      port: Int,
+      host: String = "localhost"
+  ): Unit = {
+    pollUntil(s"TCP connect to $host:$port should be refused") {
       val sock = new Socket()
       try {
-        sock.connect(new InetSocketAddress("localhost", port), 1000)
-        throw new AssertionError(s"Port $port is still accepting connections")
+        sock.connect(new InetSocketAddress(host, port), 1000)
+        throw new AssertionError(s"$host:$port is still accepting connections")
       } catch {
         case _: IOException => ()
       } finally sock.close()
@@ -112,19 +116,6 @@ trait LiveReloadBase extends AnyFunSuite {
       .flatMap(_.getInetAddresses.asScala)
       .find(address => !address.isLoopbackAddress && !address.isAnyLocalAddress)
       .map(_.getHostAddress)
-
-  /** Polls until a TCP connect to `host:port` is refused. */
-  protected def verifyTcpClosed(host: String, port: Int): Unit = {
-    pollUntil(s"TCP connect to $host:$port should be refused") {
-      val sock = new Socket()
-      try {
-        sock.connect(new InetSocketAddress(host, port), 1000)
-        throw new AssertionError(s"$host:$port is still accepting connections")
-      } catch {
-        case _: IOException => ()
-      } finally sock.close()
-    }
-  }
 
   protected def verifyHttp(
       path: String,
