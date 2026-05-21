@@ -145,6 +145,7 @@ public abstract class BaseDevServerStart<S> implements ReloadableServer {
   /** Stops the currently running application instance. */
   protected synchronized void stopInternal() {
     if (appThread == null && classLoader == null) {
+      cleanupServerForOldGeneration();
       return;
     }
 
@@ -253,9 +254,7 @@ public abstract class BaseDevServerStart<S> implements ReloadableServer {
     if (isRunning.get()) {
       logger.info("🛑 Stopping the application");
       stopProxyServer();
-      if (appThread != null) {
-        stopInternal();
-      }
+      stopInternal();
       buildLink.close();
       isRunning.set(false);
       logger.debug("Application and proxy server were successfully stopped");
