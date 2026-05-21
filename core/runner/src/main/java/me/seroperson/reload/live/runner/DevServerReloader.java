@@ -6,11 +6,15 @@ import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
 import java.net.URLClassLoader;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.AccessControlContext;
 import java.security.AccessController;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.security.PrivilegedAction;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
@@ -43,12 +47,9 @@ final class DevServerReloader implements BuildLink, Closeable {
   // Whether any source files have changed since the last request.
   private volatile boolean changed = false;
 
-  // Last time the classpath was modified in millis. Used to determine whether
-  // anything on the
-  // classpath has changed as a result of compilation, and therefore a new
-  // classloader is needed
-  // and the app needs to be reloaded.
-  private volatile long lastModified = 0L;
+  // Fingerprint of the current application classpath. Used to determine whether
+  // a new ClassLoader is needed after compilation.
+  private volatile byte[] classpathFingerprint = new byte[0];
 
   private final FileWatcher watcher;
 
@@ -106,16 +107,9 @@ final class DevServerReloader implements BuildLink, Closeable {
     } else if (compileResult instanceof CompileSuccess result) {
       var cp = result.getClasspath();
 
-      // We only want to reload if the classpath has changed.
-      // Assets don't live on the classpath, so they won't trigger a reload.
-      long newLastModified =
-          cp.stream()
-              .filter(File::exists)
-              .mapToLong(DevServerReloader::maxLastModified)
-              .max()
-              .orElse(0L);
-      var triggered = newLastModified > lastModified;
-      lastModified = newLastModified;
+      var newClasspathFingerprint = fingerprintClasspath(cp);
+      var triggered = !Arrays.equals(newClasspathFingerprint, classpathFingerprint);
+      classpathFingerprint = newClasspathFingerprint;
 
       if (triggered || shouldReload || currentApplicationClassLoader == null) {
         int iteration = classLoaderVersion.incrementAndGet();
@@ -201,12 +195,41 @@ final class DevServerReloader implements BuildLink, Closeable {
     }
   }
 
-  private static long maxLastModified(File file) {
-    try (Stream<Path> s = Files.walk(file.toPath())) {
-      return s.filter(p -> !(Files.isDirectory(p) && p.equals(file.toPath())))
-          .mapToLong(p -> p.toFile().lastModified())
-          .max()
-          .orElse(0L);
+  private static byte[] fingerprintClasspath(List<File> classpath) {
+    var digest = newDigest();
+    classpath.stream()
+        .filter(File::exists)
+        .map(File::toPath)
+        .forEach(path -> updateDigest(digest, path, path));
+    return digest.digest();
+  }
+
+  private static MessageDigest newDigest() {
+    try {
+      return MessageDigest.getInstance("SHA-256");
+    } catch (NoSuchAlgorithmException e) {
+      throw new RuntimeException(e);
+    }
+  }
+
+  private static void updateDigest(MessageDigest digest, Path root, Path path) {
+    try {
+      digest.update(Files.isDirectory(path) ? (byte) 0 : (byte) 1);
+      digest.update(root.relativize(path).toString().getBytes(StandardCharsets.UTF_8));
+      digest.update((byte) 0);
+      if (Files.isDirectory(path)) {
+        try (Stream<Path> s = Files.list(path)) {
+          s.sorted().forEach(child -> updateDigest(digest, root, child));
+        }
+      } else {
+        try (var input = Files.newInputStream(path)) {
+          var buffer = new byte[8192];
+          int read;
+          while ((read = input.read(buffer)) != -1) {
+            digest.update(buffer, 0, read);
+          }
+        }
+      }
     } catch (IOException e) {
       throw new RuntimeException(e);
     }
