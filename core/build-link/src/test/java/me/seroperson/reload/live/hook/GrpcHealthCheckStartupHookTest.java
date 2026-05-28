@@ -72,7 +72,9 @@ class GrpcHealthCheckStartupHookTest {
 
       assertTrue(
           elapsedMs >= 900L,
-          "startup hook returned too early after only " + elapsedMs + "ms while health was NOT_SERVING");
+          "startup hook returned too early after only "
+              + elapsedMs
+              + "ms while health was NOT_SERVING");
       assertTrue(ready.get(), "server should be marked ready before startup hook returns");
     } finally {
       server.shutdownNow();
@@ -121,8 +123,7 @@ class GrpcHealthCheckStartupHookTest {
     }
   }
 
-  private static final class ByteArrayMarshaller
-      implements MethodDescriptor.Marshaller<byte[]> {
+  private static final class ByteArrayMarshaller implements MethodDescriptor.Marshaller<byte[]> {
     @Override
     public InputStream stream(byte[] value) {
       return new ByteArrayInputStream(value);

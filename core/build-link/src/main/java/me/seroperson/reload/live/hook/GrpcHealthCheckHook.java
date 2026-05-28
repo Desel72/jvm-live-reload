@@ -20,9 +20,9 @@ import me.seroperson.reload.live.settings.DevServerSettings;
 /**
  * Health check hook that uses the GRPC health checking protocol to determine server health.
  *
- * <p>Each probe issues a unary {@code grpc.health.v1.Health/Check} request and treats only
- * {@code SERVING} as healthy. The configured service name is respected; an empty string checks the
- * overall server status.
+ * <p>Each probe issues a unary {@code grpc.health.v1.Health/Check} request and treats only {@code
+ * SERVING} as healthy. The configured service name is respected; an empty string checks the overall
+ * server status.
  */
 interface GrpcHealthCheckHook extends HealthCheckHook {
 
